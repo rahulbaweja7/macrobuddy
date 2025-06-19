@@ -87,6 +87,23 @@ function App() {
   const [ffLoading, setFFLoading] = useState(false);
   const [ffError, setFFError] = useState('');
 
+  // Favorites state
+  const [favorites, setFavorites] = useState([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [favoritesError, setFavoritesError] = useState('');
+  const [favoriteSuggestions, setFavoriteSuggestions] = useState([]);
+  const [favoriteSuggestionsLoading, setFavoriteSuggestionsLoading] = useState(false);
+
+  // Notification state
+  const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+
+  // Load favorites when navigating to favorites page
+  React.useEffect(() => {
+    if (page === 'favorites') {
+      loadFavorites();
+    }
+  }, [page]);
+
   // Handlers for main page
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -136,10 +153,99 @@ function App() {
     }
   };
 
+  // Handlers for favorites
+  const loadFavorites = async () => {
+    setFavoritesLoading(true);
+    setFavoritesError('');
+    try {
+      const response = await axios.get('http://localhost:3002/api/favorites');
+      setFavorites(response.data.favorites);
+    } catch (err) {
+      setFavoritesError('Failed to load favorites. Please try again.');
+      console.error('Error:', err);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  };
+
+  const saveFavorite = async (meal) => {
+    try {
+      const response = await axios.post('http://localhost:3002/api/favorites/save', { meal });
+      setFavorites(prev => [...prev, response.data.meal]);
+      setNotification({ show: true, message: 'Meal saved to favorites!', type: 'success' });
+      setTimeout(() => setNotification({ show: false, message: '', type: 'success' }), 3000);
+    } catch (err) {
+      console.error('Error saving favorite:', err);
+      setNotification({ show: true, message: 'Failed to save meal', type: 'error' });
+      setTimeout(() => setNotification({ show: false, message: '', type: 'error' }), 3000);
+    }
+  };
+
+  const removeFavorite = async (id) => {
+    try {
+      await axios.delete(`http://localhost:3002/api/favorites/${id}`);
+      setFavorites(prev => prev.filter(meal => meal.id !== id));
+      setNotification({ show: true, message: 'Meal removed from favorites', type: 'success' });
+      setTimeout(() => setNotification({ show: false, message: '', type: 'success' }), 3000);
+    } catch (err) {
+      console.error('Error removing favorite:', err);
+      setNotification({ show: true, message: 'Failed to remove meal', type: 'error' });
+      setTimeout(() => setNotification({ show: false, message: '', type: 'error' }), 3000);
+    }
+  };
+
+  const generateFavoriteSuggestions = async () => {
+    setFavoriteSuggestionsLoading(true);
+    try {
+      const response = await axios.post('http://localhost:3002/api/favorites/suggest', {
+        macros,
+        preferences: `healthy, balanced meals${cuisine && cuisine !== 'Any' ? ', cuisine: ' + cuisine : ''}`
+      });
+      setFavoriteSuggestions(response.data.suggestions);
+    } catch (err) {
+      console.error('Error generating favorite suggestions:', err);
+    } finally {
+      setFavoriteSuggestionsLoading(false);
+    }
+  };
+
+  const isFavorite = (mealName) => {
+    return favorites.some(fav => fav.meal === mealName);
+  };
+
+  const getFavoriteId = (mealName) => {
+    const favorite = favorites.find(fav => fav.meal === mealName);
+    return favorite ? favorite.id : null;
+  };
+
   const [expandedIndex, setExpandedIndex] = useState(null);
+
+  // Add state for expanded favorite meals
+  const [expandedFavoriteId, setExpandedFavoriteId] = useState(null);
+
+  // Add state for expanded favorite suggestions
+  const [expandedFavoriteSuggestionIndex, setExpandedFavoriteSuggestionIndex] = useState(null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-200 flex flex-col font-sans">
+      {/* Notification */}
+      {notification.show && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg animate-fade-in ${
+          notification.type === 'success' 
+            ? 'bg-green-100 text-green-800 border border-green-200' 
+            : 'bg-red-100 text-red-800 border border-red-200'
+        }`}>
+          <div className="flex items-center gap-2">
+            {notification.type === 'success' ? (
+              <span className="text-green-600">✓</span>
+            ) : (
+              <span className="text-red-600">✗</span>
+            )}
+            <span className="font-semibold">{notification.message}</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto flex items-center justify-between py-4 px-6">
@@ -151,6 +257,7 @@ function App() {
             <button onClick={() => setPage('landing')} className={`hover:text-indigo-600 transition ${page === 'landing' ? 'text-indigo-600 font-bold' : ''}`}>Home</button>
             <button onClick={() => setPage('main')} className={`hover:text-indigo-600 transition ${page === 'main' ? 'text-indigo-600 font-bold' : ''}`}>Meal Suggestions</button>
             <button onClick={() => setPage('fastfood')} className={`hover:text-indigo-600 transition ${page === 'fastfood' ? 'text-indigo-600 font-bold' : ''}`}>Fast Food Alternative</button>
+            <button onClick={() => setPage('favorites')} className={`hover:text-indigo-600 transition ${page === 'favorites' ? 'text-indigo-600 font-bold' : ''}`}>Favorites</button>
           </nav>
         </div>
       </header>
@@ -290,8 +397,32 @@ function App() {
                 {suggestions.map((suggestion, index) => (
                   <div key={index} className="bg-white rounded-2xl shadow-lg p-7 border border-gray-200 hover:shadow-xl transition-transform duration-200 group cursor-pointer" onClick={() => setExpandedIndex(expandedIndex === index ? null : index)}>
                     <div className="flex items-center justify-between">
-                      <h3 className="text-xl font-bold text-indigo-700 mb-1 flex items-center gap-2">{suggestion.meal}</h3>
-                      <span className="text-xs text-indigo-600 font-semibold">{expandedIndex === index ? 'Hide Details' : 'Show Details'}</span>
+                      <h3 className="text-xl font-bold text-indigo-700 mb-1 flex items-center gap-2">
+                        {suggestion.meal}
+                        {isFavorite(suggestion.meal) && (
+                          <span className="text-yellow-500 text-sm">★</span>
+                        )}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isFavorite(suggestion.meal)) {
+                              removeFavorite(getFavoriteId(suggestion.meal));
+                            } else {
+                              saveFavorite(suggestion);
+                            }
+                          }}
+                          className={`save-button px-3 py-1 rounded-full text-sm font-semibold transition-all duration-200 ${
+                            isFavorite(suggestion.meal)
+                              ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {isFavorite(suggestion.meal) ? '★ Saved' : '☆ Save'}
+                        </button>
+                        <span className="text-xs text-indigo-600 font-semibold">{expandedIndex === index ? 'Hide Details' : 'Show Details'}</span>
+                      </div>
                     </div>
                     <p className="text-gray-700 mb-2 italic text-base">{suggestion.description}</p>
                     <div className="flex flex-wrap gap-3 text-base font-medium text-gray-800 mb-2">
@@ -417,7 +548,30 @@ function App() {
               <div className="flex flex-col gap-8">
                 {ffResults.map((result, index) => (
                   <div key={index} className="bg-white rounded-2xl shadow-lg p-7 border border-gray-200 hover:shadow-xl transition-transform duration-200 group">
-                    <h3 className="text-xl font-bold text-indigo-700 mb-1 flex items-center gap-2">{result.meal}</h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xl font-bold text-indigo-700 mb-1 flex items-center gap-2">
+                        {result.meal}
+                        {isFavorite(result.meal) && (
+                          <span className="text-yellow-500 text-sm">★</span>
+                        )}
+                      </h3>
+                      <button
+                        onClick={() => {
+                          if (isFavorite(result.meal)) {
+                            removeFavorite(getFavoriteId(result.meal));
+                          } else {
+                            saveFavorite(result);
+                          }
+                        }}
+                        className={`save-button px-3 py-1 rounded-full text-sm font-semibold transition-all duration-200 ${
+                          isFavorite(result.meal)
+                            ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {isFavorite(result.meal) ? '★ Saved' : '☆ Save'}
+                      </button>
+                    </div>
                     <p className="text-gray-700 mb-2 italic text-base">{result.description}</p>
                     <div className="flex flex-wrap gap-3 text-base font-medium text-gray-800 mb-2">
                       <span className="bg-indigo-50 border border-indigo-200 rounded px-3 py-1">Protein: {result.macros.protein}g</span>
@@ -443,6 +597,264 @@ function App() {
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {/* Favorites Page */}
+      {page === 'favorites' && (
+        <section className="flex-1 flex flex-col items-center justify-center py-12 px-4">
+          <div className="max-w-4xl w-full mx-auto text-center mb-10">
+            <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">Your Favorite Meals</h1>
+            <p className="text-lg md:text-xl text-gray-600 mb-6">Manage your saved meals and get personalized suggestions based on your preferences.</p>
+          </div>
+
+          {/* Favorite-based suggestions section */}
+          {favorites.length > 0 && (
+            <div className="max-w-4xl w-full mx-auto bg-white/90 rounded-2xl shadow-xl border border-gray-200 p-8 mb-10">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Get Suggestions Based on Your Favorites</h2>
+                <p className="text-gray-600 mb-4">Enter your macro requirements to get new meal suggestions that match your saved preferences.</p>
+                <form onSubmit={(e) => { e.preventDefault(); generateFavoriteSuggestions(); }} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1 text-sm">Protein (g)</label>
+                    <input type="number" value={macros.protein} onChange={(e) => setMacros(prev => ({ ...prev, protein: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1 text-sm">Carbs (g)</label>
+                    <input type="number" value={macros.carbs} onChange={(e) => setMacros(prev => ({ ...prev, carbs: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1 text-sm">Fats (g)</label>
+                    <input type="number" value={macros.fats} onChange={(e) => setMacros(prev => ({ ...prev, fats: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1 text-sm">Calories</label>
+                    <input type="number" value={macros.calories} onChange={(e) => setMacros(prev => ({ ...prev, calories: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
+                  </div>
+                  <div className="md:col-span-4">
+                    <button type="submit" disabled={favoriteSuggestionsLoading} className="w-full px-6 py-3 rounded-full bg-indigo-600 text-white font-bold shadow-lg hover:bg-indigo-700 transition-all duration-200 disabled:opacity-60 flex items-center justify-center gap-3">
+                      {favoriteSuggestionsLoading && (<svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>)}
+                      {favoriteSuggestionsLoading ? 'Generating...' : 'Get Personalized Suggestions'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Favorite-based suggestions */}
+              {favoriteSuggestions.length > 0 && (
+                <div className="mt-8 animate-fade-in">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4">Personalized Suggestions Based on Your Favorites</h3>
+                  <div className="flex flex-col gap-6">
+                    {favoriteSuggestions.map((suggestion, index) => (
+                      <div key={index} className="bg-gray-50 rounded-xl p-6 border border-gray-200 cursor-pointer hover:shadow-md transition-all duration-200" onClick={() => setExpandedFavoriteSuggestionIndex(expandedFavoriteSuggestionIndex === index ? null : index)}>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-lg font-bold text-indigo-700">{suggestion.meal}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-indigo-600 font-semibold">{expandedFavoriteSuggestionIndex === index ? 'Hide Details' : 'Show Details'}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                saveFavorite(suggestion);
+                              }}
+                              className="save-button px-3 py-1 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 text-sm font-semibold transition-all duration-200"
+                            >
+                              ☆ Save
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-gray-700 mb-3 italic">{suggestion.description}</p>
+                        <div className="flex flex-wrap gap-2 text-sm font-medium text-gray-800">
+                          <span className="bg-indigo-50 border border-indigo-200 rounded px-2 py-1">Protein: {suggestion.macros.protein}g</span>
+                          <span className="bg-orange-50 border border-orange-200 rounded px-2 py-1">Carbs: {suggestion.macros.carbs}g</span>
+                          <span className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1">Fats: {suggestion.macros.fats}g</span>
+                          <span className="bg-gray-50 border border-gray-200 rounded px-2 py-1">Calories: {suggestion.macros.calories}</span>
+                        </div>
+                        {suggestion.difference && (
+                          <div className="flex flex-wrap gap-2 text-xs text-gray-600 mt-2">
+                            <span className="bg-yellow-100 rounded px-2 py-1">Δ Protein: {suggestion.difference.protein}</span>
+                            <span className="bg-yellow-100 rounded px-2 py-1">Δ Carbs: {suggestion.difference.carbs}</span>
+                            <span className="bg-yellow-100 rounded px-2 py-1">Δ Fats: {suggestion.difference.fats}</span>
+                            <span className="bg-yellow-100 rounded px-2 py-1">Δ Calories: {suggestion.difference.calories}</span>
+                          </div>
+                        )}
+                        {expandedFavoriteSuggestionIndex === index && suggestion.ingredients && (
+                          <div className="mt-4 animate-fade-in">
+                            <h4 className="font-semibold text-gray-700 mb-2">Detailed Recipe & Nutrition Table</h4>
+                            <div className="overflow-x-auto mb-4">
+                              <table className="min-w-full text-sm border rounded-lg">
+                                <thead>
+                                  <tr className="bg-gray-100">
+                                    <th className="px-3 py-2 text-left font-bold">Ingredient</th>
+                                    <th className="px-3 py-2 text-left font-bold">State</th>
+                                    <th className="px-3 py-2 text-left font-bold">Quantity</th>
+                                    <th className="px-3 py-2 text-left font-bold">Protein (g)</th>
+                                    <th className="px-3 py-2 text-left font-bold">Carbs (g)</th>
+                                    <th className="px-3 py-2 text-left font-bold">Fats (g)</th>
+                                    <th className="px-3 py-2 text-left font-bold">Calories</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {suggestion.ingredients.map((ing, i) => (
+                                    <tr key={i} className="border-t">
+                                      <td className="px-3 py-2">{ing.name}</td>
+                                      <td className="px-3 py-2">{ing.state}</td>
+                                      <td className="px-3 py-2">{ing.quantity}</td>
+                                      <td className="px-3 py-2">{ing.protein}</td>
+                                      <td className="px-3 py-2">{ing.carbs}</td>
+                                      <td className="px-3 py-2">{ing.fats}</td>
+                                      <td className="px-3 py-2">{ing.calories}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            {suggestion.instructions && suggestion.instructions.length > 0 && (
+                              <div className="mt-4">
+                                <h4 className="font-semibold text-gray-700 mb-2">Step-by-Step Instructions</h4>
+                                <ol className="list-decimal list-inside text-gray-700 text-sm space-y-1">
+                                  {suggestion.instructions.map((step, idx) => (
+                                    <li key={idx}>{step}</li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Favorites list */}
+          <div className="max-w-4xl w-full mx-auto">
+            {favoritesLoading ? (
+              <div className="text-center py-12">
+                <svg className="animate-spin h-8 w-8 text-indigo-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+                <p className="text-gray-600">Loading your favorites...</p>
+              </div>
+            ) : favoritesError ? (
+              <div className="text-center py-12">
+                <p className="text-red-600 mb-4">{favoritesError}</p>
+                <button onClick={loadFavorites} className="px-6 py-2 rounded-full bg-indigo-600 text-white font-semibold shadow hover:bg-indigo-700 transition-all duration-200">
+                  Try Again
+                </button>
+              </div>
+            ) : favorites.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl">★</span>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">No Favorite Meals Yet</h3>
+                <p className="text-gray-600 mb-6">Start saving meals you love to get personalized suggestions!</p>
+                <button onClick={() => setPage('main')} className="px-6 py-3 rounded-full bg-indigo-600 text-white font-bold shadow-lg hover:bg-indigo-700 transition-all duration-200">
+                  Get Meal Suggestions
+                </button>
+              </div>
+            ) : (
+              <div className="animate-fade-in">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-extrabold text-gray-800">Saved Favorites ({favorites.length})</h2>
+                  <button 
+                    onClick={loadFavorites}
+                    className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 font-semibold shadow hover:bg-gray-200 transition-all duration-200"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {favorites.map((favorite) => (
+                    <div key={favorite.id} className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200 hover:shadow-xl transition-transform duration-200 cursor-pointer" onClick={() => setExpandedFavoriteId(expandedFavoriteId === favorite.id ? null : favorite.id)}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-lg font-bold text-indigo-700 flex items-center gap-2">
+                          {favorite.meal}
+                          <span className="text-yellow-500">★</span>
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-indigo-600 font-semibold">{expandedFavoriteId === favorite.id ? 'Hide Details' : 'Show Details'}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFavorite(favorite.id);
+                            }}
+                            className="px-3 py-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 text-sm font-semibold transition-all duration-200"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-gray-700 mb-3 italic text-sm">{favorite.description}</p>
+                      <div className="flex flex-wrap gap-2 text-sm font-medium text-gray-800 mb-3">
+                        <span className="bg-indigo-50 border border-indigo-200 rounded px-2 py-1">Protein: {favorite.macros.protein}g</span>
+                        <span className="bg-orange-50 border border-orange-200 rounded px-2 py-1">Carbs: {favorite.macros.carbs}g</span>
+                        <span className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1">Fats: {favorite.macros.fats}g</span>
+                        <span className="bg-gray-50 border border-gray-200 rounded px-2 py-1">Calories: {favorite.macros.calories}</span>
+                      </div>
+                      {favorite.difference && (
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-600 mb-3">
+                          <span className="bg-yellow-100 rounded px-2 py-1">Δ Protein: {favorite.difference.protein}</span>
+                          <span className="bg-yellow-100 rounded px-2 py-1">Δ Carbs: {favorite.difference.carbs}</span>
+                          <span className="bg-yellow-100 rounded px-2 py-1">Δ Fats: {favorite.difference.fats}</span>
+                          <span className="bg-yellow-100 rounded px-2 py-1">Δ Calories: {favorite.difference.calories}</span>
+                        </div>
+                      )}
+                      {expandedFavoriteId === favorite.id && favorite.ingredients && (
+                        <div className="mt-4 animate-fade-in">
+                          <h4 className="font-semibold text-gray-700 mb-2">Detailed Recipe & Nutrition Table</h4>
+                          <div className="overflow-x-auto mb-4">
+                            <table className="min-w-full text-sm border rounded-lg">
+                              <thead>
+                                <tr className="bg-gray-100">
+                                  <th className="px-3 py-2 text-left font-bold">Ingredient</th>
+                                  <th className="px-3 py-2 text-left font-bold">State</th>
+                                  <th className="px-3 py-2 text-left font-bold">Quantity</th>
+                                  <th className="px-3 py-2 text-left font-bold">Protein (g)</th>
+                                  <th className="px-3 py-2 text-left font-bold">Carbs (g)</th>
+                                  <th className="px-3 py-2 text-left font-bold">Fats (g)</th>
+                                  <th className="px-3 py-2 text-left font-bold">Calories</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {favorite.ingredients.map((ing, i) => (
+                                  <tr key={i} className="border-t">
+                                    <td className="px-3 py-2">{ing.name}</td>
+                                    <td className="px-3 py-2">{ing.state}</td>
+                                    <td className="px-3 py-2">{ing.quantity}</td>
+                                    <td className="px-3 py-2">{ing.protein}</td>
+                                    <td className="px-3 py-2">{ing.carbs}</td>
+                                    <td className="px-3 py-2">{ing.fats}</td>
+                                    <td className="px-3 py-2">{ing.calories}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {favorite.instructions && favorite.instructions.length > 0 && (
+                            <div className="mt-4">
+                              <h4 className="font-semibold text-gray-700 mb-2">Step-by-Step Instructions</h4>
+                              <ol className="list-decimal list-inside text-gray-700 text-sm space-y-1">
+                                {favorite.instructions.map((step, idx) => (
+                                  <li key={idx}>{step}</li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-500">
+                        Saved on {new Date(favorite.savedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       )}
 
