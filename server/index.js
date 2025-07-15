@@ -2,9 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const OpenAI = require('openai');
 require('dotenv').config();
+const { jsonrepair } = require('jsonrepair');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = 3001;
 
 // Middleware
 app.use(cors());
@@ -21,40 +22,43 @@ function safeJsonParse(content) {
     // First, try to parse the content directly
     return JSON.parse(content);
   } catch (error) {
-    console.log('Direct JSON parse failed, attempting to extract JSON...');
-    
-    // Try to extract JSON from markdown code blocks
-    const jsonMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[1]);
-      } catch (e) {
-        console.log('JSON extraction from markdown failed');
+    console.log('Direct JSON parse failed, attempting to repair JSON...');
+    try {
+      // Attempt to repair the JSON using jsonrepair
+      const repaired = jsonrepair(content);
+      return JSON.parse(repaired);
+    } catch (repairError) {
+      console.log('jsonrepair failed, attempting to extract JSON...');
+      // Try to extract JSON from markdown code blocks
+      const jsonMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[1]);
+        } catch (e) {
+          console.log('JSON extraction from markdown failed');
+        }
       }
-    }
-    
-    // Try to find JSON array or object in the content
-    const arrayMatch = content.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-      try {
-        return JSON.parse(arrayMatch[0]);
-      } catch (e) {
-        console.log('Array extraction failed');
+      // Try to find JSON array or object in the content
+      const arrayMatch = content.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        try {
+          return JSON.parse(arrayMatch[0]);
+        } catch (e) {
+          console.log('Array extraction failed');
+        }
       }
-    }
-    
-    const objectMatch = content.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-      try {
-        return JSON.parse(objectMatch[0]);
-      } catch (e) {
-        console.log('Object extraction failed');
+      const objectMatch = content.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        try {
+          return JSON.parse(objectMatch[0]);
+        } catch (e) {
+          console.log('Object extraction failed');
+        }
       }
+      console.log('All JSON parsing attempts failed');
+      console.log('Raw content:', content);
+      throw new Error('Unable to parse JSON from OpenAI response');
     }
-    
-    console.log('All JSON parsing attempts failed');
-    console.log('Raw content:', content);
-    throw new Error('Unable to parse JSON from OpenAI response');
   }
 }
 
@@ -119,8 +123,8 @@ app.post('/api/suggest-meals', async (req, res) => {
     ${macroPriority}
     
     Do NOT suggest any of these dishes: ${excludeList.join(", ")}.
-    Only suggest meals where the protein, carbs, fats, and calories are EACH within ±10% of the requested values. If no such dish exists, say so and do not suggest any dish that does not meet this requirement. Do not make up numbers to fit the macros. Instead, only suggest real, plausible dishes that naturally fit the macros.
-    Suggest 3 LESS COMMON, creative, or regional meals from the selected cuisine that match these macros as closely as possible (within ±10% for each macro, if possible). The meals should be significantly different from each other, not just variations of the same dish with different quantities. Each time this is requested, you must suggest new dishes that have not been suggested before, and avoid repeating previous results.
+    Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, say so and do not suggest any dish that does not meet this requirement. Do not make up numbers to fit the macros. Instead, only suggest real, plausible dishes that naturally fit the macros.
+    Suggest 3 LESS COMMON, creative, or regional meals from the selected cuisine that match these macros as closely as possible (within ±20% for each macro, if possible). The meals should be significantly different from each other, not just variations of the same dish with different quantities. Each time this is requested, you must suggest new dishes that have not been suggested before, and avoid repeating previous results.
 
     For each meal, provide:
     1. The meal name
@@ -178,7 +182,79 @@ app.post('/api/suggest-meals', async (req, res) => {
       model: "gpt-3.5-turbo",
       temperature: 1.1,
     });
-    const suggestions = safeJsonParse(completion.choices[0].message.content);
+    let suggestions = safeJsonParse(completion.choices[0].message.content);
+    // If no suggestions found, try a second, looser prompt for closest matches
+    if (Array.isArray(suggestions) && suggestions.length === 0) {
+      const fallbackPrompt = `Given the following macro requirements:
+      - Protein: ${macros.protein}g
+      - Carbs: ${macros.carbs}g
+      - Fats: ${macros.fats}g
+      - Calories: ${macros.calories}
+      
+      Preferences: ${preferences}
+      ${macroPriority}
+      
+      Do NOT suggest any of these dishes: ${excludeList.join(", ")}.
+      If you cannot find meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values, suggest the 3 closest real, plausible meals from the selected cuisine. For each, show the difference for each macro in a 'difference' field. The meals should be significantly different from each other, not just variations of the same dish with different quantities. Each time this is requested, you must suggest new dishes that have not been suggested before, and avoid repeating previous results.
+      
+      For each meal, provide:
+      1. The meal name
+      2. A brief description
+      3. The macro breakdown (protein, carbs, fats, calories)
+      4. A detailed recipe:
+         - For each ingredient, specify: name, state (raw/cooked), exact quantity with units, and calories for that amount.
+         - Specify if the weight is for raw or cooked ingredient.
+         - Specify the cooking method and step-by-step instructions.
+         - Use only common ingredients and realistic cooking methods.
+      5. A nutrition table: for each ingredient, show name, state, quantity, protein, carbs, fats, and calories.
+      6. If the macros are not an exact match, show the difference for each macro in a 'difference' field as a number (positive or negative, but do not use a plus sign, just the number).
+      7. Step-by-step cooking instructions as an array of strings.
+      
+      Random seed: ${randomSeed}
+      
+      IMPORTANT: Respond with ONLY valid JSON. Do not include any markdown formatting, explanations, or text outside the JSON structure.
+      
+      Format the response as a JSON array of objects with the following structure. If no dish fits, return an empty array:
+      [
+        {
+          "meal": "meal name",
+          "description": "brief description",
+          "macros": {
+            "protein": number,
+            "carbs": number,
+            "fats": number,
+            "calories": number
+          },
+          "difference": {
+            "protein": number,
+            "carbs": number,
+            "fats": number,
+            "calories": number
+          },
+          "ingredients": [
+            {
+              "name": "ingredient name",
+              "state": "raw/cooked",
+              "quantity": "amount with units",
+              "protein": number,
+              "carbs": number,
+              "fats": number,
+              "calories": number
+            }
+          ],
+          "instructions": [
+            "Step 1...",
+            "Step 2..."
+          ]
+        }
+      ]`;
+      const fallbackCompletion = await openai.chat.completions.create({
+        messages: [{ role: "user", content: fallbackPrompt }],
+        model: "gpt-3.5-turbo",
+        temperature: 1.1,
+      });
+      suggestions = safeJsonParse(fallbackCompletion.choices[0].message.content);
+    }
     res.json({ suggestions });
   } catch (error) {
     console.error('Error in /api/suggest-meals:', error);
@@ -371,7 +447,7 @@ app.post('/api/favorites/suggest', async (req, res) => {
     ${macroPriority}
     
     Do NOT suggest any of these dishes: ${excludeList.join(", ")}.
-    Only suggest meals where the protein, carbs, fats, and calories are EACH within ±10% of the requested values. If no such dish exists, say so and do not suggest any dish that does not meet this requirement. Do not make up numbers to fit the macros. Instead, only suggest real, plausible dishes that naturally fit the macros.
+    Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, say so and do not suggest any dish that does not meet this requirement. Do not make up numbers to fit the macros. Instead, only suggest real, plausible dishes that naturally fit the macros.
     Suggest 3 NEW meals that match the user's style and preferences from their favorites, but are different dishes. The meals should be significantly different from each other and from their existing favorites.
 
     For each meal, provide:
