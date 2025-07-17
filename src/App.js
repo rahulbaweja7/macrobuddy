@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage';
 import MealSuggestionsPage from './pages/MealSuggestionsPage';
 import FastFoodPage from './pages/FastFoodPage';
 import FavoritesPage from './pages/FavoritesPage';
+import MealPlanPage from './pages/MealPlanPage';
 // import other pages as you create them
 
 const FAST_FOOD_CHAINS = [
@@ -220,6 +221,9 @@ function App() {
           setExpandedFavoriteSuggestionIndex={setExpandedFavoriteSuggestionIndex}
           onSave={saveFavorite}
         />
+      )}
+      {page === 'mealplan' && (
+        <MealPlanPage />
       )}
     </div>
   );

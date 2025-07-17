@@ -1,11 +1,16 @@
 import React from 'react';
 
 export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave, onRemove, showSave, showRemove }) {
+  // Defensive: fallback for missing meal or macros
+  if (!meal) {
+    return <div className="bg-white rounded-2xl shadow-lg p-7 border border-gray-200">No meal data available.</div>;
+  }
+  const macros = meal.macros || { protein: 0, carbs: 0, fats: 0, calories: 0 };
   return (
     <div className="bg-white rounded-2xl shadow-lg p-7 border border-gray-200 hover:shadow-xl transition-transform duration-200 group cursor-pointer" onClick={onExpand}>
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-bold text-indigo-700 mb-1 flex items-center gap-2">
-          {meal.meal}
+          {meal.meal || 'Untitled Meal'}
           {isFavorite && <span className="text-yellow-500 text-sm">★</span>}
         </h3>
         <div className="flex items-center gap-2">
@@ -28,12 +33,12 @@ export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave,
           <span className="text-xs text-indigo-600 font-semibold">{expanded ? 'Hide Details' : 'Show Details'}</span>
         </div>
       </div>
-      <p className="text-gray-700 mb-2 italic text-base">{meal.description}</p>
+      <p className="text-gray-700 mb-2 italic text-base">{meal.description || 'No description available.'}</p>
       <div className="flex flex-wrap gap-3 text-base font-medium text-gray-800 mb-2">
-        <span className="bg-indigo-50 border border-indigo-200 rounded px-3 py-1">Protein: {meal.macros.protein}g</span>
-        <span className="bg-orange-50 border border-orange-200 rounded px-3 py-1">Carbs: {meal.macros.carbs}g</span>
-        <span className="bg-yellow-50 border border-yellow-200 rounded px-3 py-1">Fats: {meal.macros.fats}g</span>
-        <span className="bg-gray-50 border border-gray-200 rounded px-3 py-1">Calories: {meal.macros.calories}</span>
+        <span className="bg-indigo-50 border border-indigo-200 rounded px-3 py-1">Protein: {macros.protein}g</span>
+        <span className="bg-orange-50 border border-orange-200 rounded px-3 py-1">Carbs: {macros.carbs}g</span>
+        <span className="bg-yellow-50 border border-yellow-200 rounded px-3 py-1">Fats: {macros.fats}g</span>
+        <span className="bg-gray-50 border border-gray-200 rounded px-3 py-1">Calories: {macros.calories}</span>
       </div>
       {meal.difference && (
         <div className="flex flex-wrap gap-2 text-xs text-gray-600 mb-2">
@@ -43,7 +48,7 @@ export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave,
           <span className="bg-yellow-100 rounded px-2 py-1">Δ Calories: {meal.difference.calories}</span>
         </div>
       )}
-      {expanded && meal.ingredients && (
+      {expanded && Array.isArray(meal.ingredients) && meal.ingredients.length > 0 && (
         <div className="mt-4 animate-fade-in">
           <h4 className="font-semibold text-gray-700 mb-2">Detailed Recipe & Nutrition Table</h4>
           <div className="overflow-x-auto mb-4">
@@ -74,7 +79,7 @@ export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave,
               </tbody>
             </table>
           </div>
-          {meal.instructions && meal.instructions.length > 0 && (
+          {Array.isArray(meal.instructions) && meal.instructions.length > 0 && (
             <div className="mt-4">
               <h4 className="font-semibold text-gray-700 mb-2">Step-by-Step Instructions</h4>
               <ol className="list-decimal list-inside text-gray-700 text-base space-y-1">
