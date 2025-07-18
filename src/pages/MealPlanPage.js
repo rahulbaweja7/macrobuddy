@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { FaEgg, FaUtensils, FaPizzaSlice } from 'react-icons/fa';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS = [
@@ -9,6 +11,7 @@ const MEALS = [
 ];
 
 export default function MealPlanPage() {
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [mealPlan, setMealPlan] = useState(() => {
     const plan = {};
     DAYS.forEach(day => {
@@ -51,6 +54,21 @@ export default function MealPlanPage() {
       <div className="max-w-5xl w-full mx-auto text-center mb-10">
         <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">Weekly Meal Plan</h1>
         <p className="text-lg md:text-xl text-gray-600 mb-6">Plan your week with personalized meals for each day and meal slot.</p>
+        <div className="flex justify-center mt-8">
+          <div className="rounded-2xl shadow-lg p-4 bg-white border border-gray-100">
+            <Calendar
+              onChange={setSelectedDate}
+              value={selectedDate}
+              tileClassName={({ date, view }) =>
+                view === 'month' && date.toDateString() === selectedDate.toDateString()
+                  ? 'bg-indigo-600 text-white rounded-full' : ''
+              }
+              prev2Label={null}
+              next2Label={null}
+              className="modern-calendar"
+            />
+          </div>
+        </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 w-full max-w-6xl">
         {DAYS.map(day => {
