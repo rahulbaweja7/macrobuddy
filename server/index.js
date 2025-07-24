@@ -17,6 +17,7 @@ const openai = new OpenAI({
 });
 
 // Helper function to safely parse JSON from OpenAI response
+// This function handles various edge cases where OpenAI might return malformed JSON
 function safeJsonParse(content) {
   try {
     // First, try to parse the content directly
