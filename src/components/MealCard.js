@@ -6,6 +6,16 @@ export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave,
     return <div className="bg-white rounded-2xl shadow-lg p-7 border border-gray-200">No meal data available.</div>;
   }
   const macros = meal.macros || { protein: 0, carbs: 0, fats: 0, calories: 0 };
+  
+  // Normalize instruction text to avoid double numbering when rendered inside an <ol>
+  const normalizeInstruction = (input) => {
+    const value = String(input ?? '').trim();
+    let text = value.replace(/^(?:step\s*)?\d+\s*(?:[:\-\.]|\))\s*/i, '');
+    text = text.replace(/^\d+\.(?:\s*)/, '');
+    text = text.replace(/^\d+\)(?:\s*)/, '');
+    text = text.replace(/^[\u2022\-]\s*/, '');
+    return text.trim();
+  };
   return (
     <div className="bg-white rounded-2xl shadow-lg p-7 border border-gray-200 hover:shadow-xl transition-transform duration-200 group cursor-pointer" onClick={onExpand}>
       <div className="flex items-center justify-between">
@@ -84,7 +94,7 @@ export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave,
               <h4 className="font-semibold text-gray-700 mb-2">Step-by-Step Instructions</h4>
               <ol className="list-decimal list-inside text-gray-700 text-base space-y-1">
                 {meal.instructions.map((step, idx) => (
-                  <li key={idx}>{step}</li>
+                  <li key={idx}>{normalizeInstruction(step)}</li>
                 ))}
               </ol>
             </div>
