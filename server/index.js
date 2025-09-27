@@ -63,6 +63,47 @@ function safeJsonParse(content) {
   }
 }
 
+// Normalize meals/items returned by the model into a consistent shape
+function normalizeSuggestions(raw) {
+  const toArray = (val) => {
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') {
+      if (Array.isArray(val.suggestions)) return val.suggestions;
+      if (Array.isArray(val.meals)) return val.meals;
+      if (Array.isArray(val.items)) return val.items;
+    }
+    return [];
+  };
+
+  const items = toArray(raw);
+  return items.map((item) => {
+    const macros = item.macros || {
+      protein: Number(item.protein || 0),
+      carbs: Number(item.carbs || 0),
+      fats: Number(item.fats || 0),
+      calories: Number(item.calories || 0),
+    };
+    const instructions = Array.isArray(item.instructions)
+      ? item.instructions
+      : typeof item.instructions === 'string'
+        ? item.instructions.split(/\r?\n|\.|\u2022|\-/).map(s => s.trim()).filter(Boolean)
+        : [];
+    return {
+      meal: item.meal || item.name || item.title || 'Untitled Meal',
+      description: item.description || item.desc || '',
+      macros,
+      difference: item.difference || item.delta || undefined,
+      ingredients: Array.isArray(item.ingredients)
+        ? item.ingredients
+        : Array.isArray(item.recipe?.ingredients)
+          ? item.recipe.ingredients
+          : [],
+      instructions,
+      customization: item.customization, // used by fast food endpoint
+    };
+  }).filter(Boolean);
+}
+
 // List of common/popular dishes to exclude for variety
 const COMMON_DISHES = [
   "Chicken Tikka Masala",
@@ -180,8 +221,8 @@ app.post('/api/suggest-meals', async (req, res) => {
     ]`;
     const completion = await openai.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
-      model: "gpt-3.5-turbo",
-      temperature: 1.1,
+      model: "gpt-4o-mini",
+      temperature: 0.7,
     });
     let suggestions = safeJsonParse(completion.choices[0].message.content);
     // If no suggestions found, try a second, looser prompt for closest matches
@@ -251,12 +292,12 @@ app.post('/api/suggest-meals', async (req, res) => {
       ]`;
       const fallbackCompletion = await openai.chat.completions.create({
         messages: [{ role: "user", content: fallbackPrompt }],
-        model: "gpt-3.5-turbo",
-        temperature: 1.1,
+        model: "gpt-4o-mini",
+        temperature: 0.7,
       });
       suggestions = safeJsonParse(fallbackCompletion.choices[0].message.content);
     }
-    res.json({ suggestions });
+    res.json({ suggestions: normalizeSuggestions(suggestions) });
   } catch (error) {
     console.error('Error in /api/suggest-meals:', error);
     if (error.message.includes('Unable to parse JSON')) {
@@ -320,11 +361,11 @@ app.post('/api/fastfood-alternatives', async (req, res) => {
     ]`;
     const completion = await openai.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
-      model: "gpt-3.5-turbo",
-      temperature: 1.1,
+      model: "gpt-4o-mini",
+      temperature: 0.7,
     });
     const suggestions = safeJsonParse(completion.choices[0].message.content);
-    res.json({ suggestions });
+    res.json({ suggestions: normalizeSuggestions(suggestions) });
   } catch (error) {
     console.error('Error in /api/fastfood-alternatives:', error);
     if (error.message.includes('Unable to parse JSON')) {
@@ -505,12 +546,12 @@ app.post('/api/favorites/suggest', async (req, res) => {
     
     const completion = await openai.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
-      model: "gpt-3.5-turbo",
-      temperature: 1.1,
+      model: "gpt-4o-mini",
+      temperature: 0.7,
     });
     
     const suggestions = safeJsonParse(completion.choices[0].message.content);
-    res.json({ suggestions });
+    res.json({ suggestions: normalizeSuggestions(suggestions) });
   } catch (error) {
     console.error('Error generating favorite-based suggestions:', error);
     if (error.message.includes('Unable to parse JSON')) {
