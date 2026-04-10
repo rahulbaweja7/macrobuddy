@@ -1,69 +1,102 @@
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const OpenAI = require('openai');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { jsonrepair } = require('jsonrepair');
+const connectDB = require('./db');
+const authMiddleware = require('./middleware/auth');
+const User = require('./models/User');
+const Favorite = require('./models/Favorite');
+const MealPlan = require('./models/MealPlan');
+
+connectDB();
 
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
 app.use(express.json());
+app.use(passport.initialize());
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// ─── Google OAuth strategy ────────────────────────────────────────────────────
+passport.use(new GoogleStrategy(
+  {
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: '/api/auth/google/callback',
+  },
+  async (accessToken, refreshToken, profile, done) => {
+    try {
+      const email = profile.emails[0].value;
 
-// Helper function to safely parse JSON from OpenAI response
-// This function handles various edge cases where OpenAI might return malformed JSON
+      // Find by googleId first, then fall back to email (link accounts)
+      let user = await User.findOne({ googleId: profile.id });
+      if (!user) {
+        user = await User.findOne({ email });
+        if (user) {
+          user.googleId = profile.id;
+          await user.save();
+        } else {
+          user = await User.create({
+            name: profile.displayName,
+            email,
+            googleId: profile.id,
+          });
+        }
+      }
+      done(null, user);
+    } catch (err) {
+      done(err);
+    }
+  }
+));
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const CUISINES = [
+  'Any', 'American', 'Italian', 'Mexican', 'Indian', 'Chinese', 'Japanese',
+  'Thai', 'Mediterranean', 'French', 'Greek', 'Middle Eastern', 'Korean',
+  'Vietnamese', 'Spanish', 'African',
+];
+
+const COMMON_DISHES = [
+  'Chicken Tikka Masala', 'Chana Masala', 'Tandoori Salmon', 'Paneer Tikka',
+  'Butter Chicken', 'Dal Makhani', 'Palak Paneer', 'Rogan Josh', 'Biryani',
+  'Aloo Gobi', 'Samosa', 'Lamb Vindaloo', 'Saag Paneer', 'Malai Kofta',
+  'Fish Curry', 'Chicken Curry', 'Tandoori Chicken', 'Korma', 'Dosa',
+  'Idli', 'Naan', 'Raita',
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function safeJsonParse(content) {
   try {
-    // First, try to parse the content directly
     return JSON.parse(content);
-  } catch (error) {
-    console.log('Direct JSON parse failed, attempting to repair JSON...');
+  } catch {
     try {
-      // Attempt to repair the JSON using jsonrepair
-      const repaired = jsonrepair(content);
-      return JSON.parse(repaired);
-    } catch (repairError) {
-      console.log('jsonrepair failed, attempting to extract JSON...');
-      // Try to extract JSON from markdown code blocks
-      const jsonMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[1]);
-        } catch (e) {
-          console.log('JSON extraction from markdown failed');
-        }
+      return JSON.parse(jsonrepair(content));
+    } catch {
+      const mdMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      if (mdMatch) {
+        try { return JSON.parse(mdMatch[1]); } catch {}
       }
-      // Try to find JSON array or object in the content
-      const arrayMatch = content.match(/\[[\s\S]*\]/);
-      if (arrayMatch) {
-        try {
-          return JSON.parse(arrayMatch[0]);
-        } catch (e) {
-          console.log('Array extraction failed');
-        }
+      const arrMatch = content.match(/\[[\s\S]*\]/);
+      if (arrMatch) {
+        try { return JSON.parse(arrMatch[0]); } catch {}
       }
-      const objectMatch = content.match(/\{[\s\S]*\}/);
-      if (objectMatch) {
-        try {
-          return JSON.parse(objectMatch[0]);
-        } catch (e) {
-          console.log('Object extraction failed');
-        }
+      const objMatch = content.match(/\{[\s\S]*\}/);
+      if (objMatch) {
+        try { return JSON.parse(objMatch[0]); } catch {}
       }
-      console.log('All JSON parsing attempts failed');
-      console.log('Raw content:', content);
       throw new Error('Unable to parse JSON from OpenAI response');
     }
   }
 }
 
-// Normalize meals/items returned by the model into a consistent shape
 function normalizeSuggestions(raw) {
   const toArray = (val) => {
     if (Array.isArray(val)) return val;
@@ -75,8 +108,7 @@ function normalizeSuggestions(raw) {
     return [];
   };
 
-  const items = toArray(raw);
-  return items.map((item) => {
+  return toArray(raw).map((item) => {
     const macros = item.macros || {
       protein: Number(item.protein || 0),
       carbs: Number(item.carbs || 0),
@@ -86,7 +118,7 @@ function normalizeSuggestions(raw) {
     const instructions = Array.isArray(item.instructions)
       ? item.instructions
       : typeof item.instructions === 'string'
-        ? item.instructions.split(/\r?\n|\.|\u2022|\-/).map(s => s.trim()).filter(Boolean)
+        ? item.instructions.split(/\r?\n|\.|\u2022|-/).map(s => s.trim()).filter(Boolean)
         : [];
     return {
       meal: item.meal || item.name || item.title || 'Untitled Meal',
@@ -99,469 +131,324 @@ function normalizeSuggestions(raw) {
           ? item.recipe.ingredients
           : [],
       instructions,
-      customization: item.customization, // used by fast food endpoint
+      customization: item.customization,
     };
   }).filter(Boolean);
 }
 
-// List of common/popular dishes to exclude for variety
-const COMMON_DISHES = [
-  "Chicken Tikka Masala",
-  "Chana Masala",
-  "Tandoori Salmon",
-  "Paneer Tikka",
-  "Butter Chicken",
-  "Dal Makhani",
-  "Palak Paneer",
-  "Rogan Josh",
-  "Biryani",
-  "Aloo Gobi",
-  "Samosa",
-  "Lamb Vindaloo",
-  "Saag Paneer",
-  "Malai Kofta",
-  "Fish Curry",
-  "Chicken Curry",
-  "Tandoori Chicken",
-  "Korma",
-  "Dosa",
-  "Idli",
-  "Naan",
-  "Raita"
-];
+// ─── Auth routes ─────────────────────────────────────────────────────────────
 
-// In-memory storage for favorite meals (in production, use a database)
-let favoriteMeals = [];
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashed });
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email } });
+  } catch (err) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
 
-// Helper to extract previous suggestions from request (if any)
-function getPreviousSuggestions(req) {
-  // Optionally, you can pass previous suggestions from the frontend in req.body.previousSuggestions
-  // For now, we use none (stateless), but you can expand this for even more control
-  return [];
-}
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
 
-// Endpoint to get meal suggestions
+// ─── Google OAuth routes ──────────────────────────────────────────────────────
+
+app.get('/api/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+);
+
+app.get('/api/auth/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.CLIENT_URL || 'http://localhost:3000'}?auth_error=true` }),
+  (req, res) => {
+    const token = jwt.sign({ userId: req.user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const user = encodeURIComponent(JSON.stringify({
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+    }));
+    res.redirect(`${process.env.CLIENT_URL || 'http://localhost:3000'}?token=${token}&user=${user}`);
+  }
+);
+
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: { id: user._id, name: user.name, email: user.email } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// ─── Meal suggestion routes (public) ─────────────────────────────────────────
+
 app.post('/api/suggest-meals', async (req, res) => {
   try {
     const { macros, preferences } = req.body;
+    const p = Number(macros.protein), c = Number(macros.carbs), f = Number(macros.fats);
     let macroPriority = '';
-    const p = Number(macros.protein);
-    const c = Number(macros.carbs);
-    const f = Number(macros.fats);
     if (p > c && p > f) macroPriority = 'Focus on high protein, low ' + (c < f ? 'carbs' : 'fats') + ' meals.';
     else if (c > p && c > f) macroPriority = 'Focus on high carb, low ' + (p < f ? 'protein' : 'fats') + ' meals.';
     else if (f > p && f > c) macroPriority = 'Focus on high fat, low ' + (p < c ? 'protein' : 'carbs') + ' meals.';
     else macroPriority = 'Balance all macros.';
+
     const randomSeed = Math.floor(Math.random() * 1000000);
-    const previousSuggestions = getPreviousSuggestions(req);
-    const excludeList = previousSuggestions.length > 0 ? previousSuggestions : COMMON_DISHES;
-    const prompt = `Given the following macro requirements:
+    const excludeList = COMMON_DISHES;
+
+    const buildPrompt = (strict) => `Given the following macro requirements:
     - Protein: ${macros.protein}g
     - Carbs: ${macros.carbs}g
     - Fats: ${macros.fats}g
     - Calories: ${macros.calories}
-    
+
     Preferences: ${preferences}
     ${macroPriority}
-    
-    Do NOT suggest any of these dishes: ${excludeList.join(", ")}.
-    Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, say so and do not suggest any dish that does not meet this requirement. Do not make up numbers to fit the macros. Instead, only suggest real, plausible dishes that naturally fit the macros.
-    Suggest 3 LESS COMMON, creative, or regional meals from the selected cuisine that match these macros as closely as possible (within ±20% for each macro, if possible). The meals should be significantly different from each other, not just variations of the same dish with different quantities. Each time this is requested, you must suggest new dishes that have not been suggested before, and avoid repeating previous results.
 
-    For each meal, provide:
-    1. The meal name
-    2. A brief description
-    3. The macro breakdown (protein, carbs, fats, calories)
-    4. A detailed recipe:
-       - For each ingredient, specify: name, state (raw/cooked), exact quantity with units, and calories for that amount.
-       - Specify if the weight is for raw or cooked ingredient.
-       - Specify the cooking method and step-by-step instructions.
-       - Use only common ingredients and realistic cooking methods.
-    5. A nutrition table: for each ingredient, show name, state, quantity, protein, carbs, fats, and calories.
-    6. If the macros are not an exact match, show the difference for each macro in a 'difference' field as a number (positive or negative, but do not use a plus sign, just the number).
-    7. Step-by-step cooking instructions as an array of strings.
-    
+    Do NOT suggest any of these dishes: ${excludeList.join(', ')}.
+    ${strict
+      ? 'Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, return an empty array.'
+      : 'Suggest the 3 closest real, plausible meals. For each, show the macro difference.'
+    }
+    Suggest 3 LESS COMMON, creative, or regional meals from the selected cuisine. The meals should be significantly different from each other.
     Random seed: ${randomSeed}
-    
-    IMPORTANT: Respond with ONLY valid JSON. Do not include any markdown formatting, explanations, or text outside the JSON structure.
-    
-    Format the response as a JSON array of objects with the following structure. If no dish fits, return an empty array:
-    [
-      {
-        "meal": "meal name",
-        "description": "brief description",
-        "macros": {
-          "protein": number,
-          "carbs": number,
-          "fats": number,
-          "calories": number
-        },
-        "difference": {
-          "protein": number,
-          "carbs": number,
-          "fats": number,
-          "calories": number
-        },
-        "ingredients": [
-          {
-            "name": "ingredient name",
-            "state": "raw/cooked",
-            "quantity": "amount with units",
-            "protein": number,
-            "carbs": number,
-            "fats": number,
-            "calories": number
-          }
-        ],
-        "instructions": [
-          "Step 1...",
-          "Step 2..."
-        ]
-      }
-    ]`;
+
+    IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
+    [{ "meal": "", "description": "", "macros": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "difference": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "ingredients": [{ "name": "", "state": "", "quantity": "", "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }], "instructions": ["Step 1..."] }]`;
+
     const completion = await openai.chat.completions.create({
-      messages: [{ role: "user", content: prompt }],
-      model: "gpt-4o-mini",
+      messages: [{ role: 'user', content: buildPrompt(true) }],
+      model: 'gpt-4o-mini',
       temperature: 0.7,
     });
     let suggestions = safeJsonParse(completion.choices[0].message.content);
-    // If no suggestions found, try a second, looser prompt for closest matches
+
     if (Array.isArray(suggestions) && suggestions.length === 0) {
-      const fallbackPrompt = `Given the following macro requirements:
-      - Protein: ${macros.protein}g
-      - Carbs: ${macros.carbs}g
-      - Fats: ${macros.fats}g
-      - Calories: ${macros.calories}
-      
-      Preferences: ${preferences}
-      ${macroPriority}
-      
-      Do NOT suggest any of these dishes: ${excludeList.join(", ")}.
-      If you cannot find meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values, suggest the 3 closest real, plausible meals from the selected cuisine. For each, show the difference for each macro in a 'difference' field. The meals should be significantly different from each other, not just variations of the same dish with different quantities. Each time this is requested, you must suggest new dishes that have not been suggested before, and avoid repeating previous results.
-      
-      For each meal, provide:
-      1. The meal name
-      2. A brief description
-      3. The macro breakdown (protein, carbs, fats, calories)
-      4. A detailed recipe:
-         - For each ingredient, specify: name, state (raw/cooked), exact quantity with units, and calories for that amount.
-         - Specify if the weight is for raw or cooked ingredient.
-         - Specify the cooking method and step-by-step instructions.
-         - Use only common ingredients and realistic cooking methods.
-      5. A nutrition table: for each ingredient, show name, state, quantity, protein, carbs, fats, and calories.
-      6. If the macros are not an exact match, show the difference for each macro in a 'difference' field as a number (positive or negative, but do not use a plus sign, just the number).
-      7. Step-by-step cooking instructions as an array of strings.
-      
-      Random seed: ${randomSeed}
-      
-      IMPORTANT: Respond with ONLY valid JSON. Do not include any markdown formatting, explanations, or text outside the JSON structure.
-      
-      Format the response as a JSON array of objects with the following structure. If no dish fits, return an empty array:
-      [
-        {
-          "meal": "meal name",
-          "description": "brief description",
-          "macros": {
-            "protein": number,
-            "carbs": number,
-            "fats": number,
-            "calories": number
-          },
-          "difference": {
-            "protein": number,
-            "carbs": number,
-            "fats": number,
-            "calories": number
-          },
-          "ingredients": [
-            {
-              "name": "ingredient name",
-              "state": "raw/cooked",
-              "quantity": "amount with units",
-              "protein": number,
-              "carbs": number,
-              "fats": number,
-              "calories": number
-            }
-          ],
-          "instructions": [
-            "Step 1...",
-            "Step 2..."
-          ]
-        }
-      ]`;
-      const fallbackCompletion = await openai.chat.completions.create({
-        messages: [{ role: "user", content: fallbackPrompt }],
-        model: "gpt-4o-mini",
+      const fallback = await openai.chat.completions.create({
+        messages: [{ role: 'user', content: buildPrompt(false) }],
+        model: 'gpt-4o-mini',
         temperature: 0.7,
       });
-      suggestions = safeJsonParse(fallbackCompletion.choices[0].message.content);
+      suggestions = safeJsonParse(fallback.choices[0].message.content);
     }
+
     res.json({ suggestions: normalizeSuggestions(suggestions) });
-  } catch (error) {
-    console.error('Error in /api/suggest-meals:', error);
-    if (error.message.includes('Unable to parse JSON')) {
-      res.status(500).json({ error: 'Failed to parse meal suggestions from AI response' });
-    } else {
-      res.status(500).json({ error: 'Failed to generate meal suggestions' });
-    }
+  } catch (err) {
+    console.error('Error in /api/suggest-meals:', err);
+    res.status(500).json({ error: 'Failed to generate meal suggestions' });
   }
 });
 
-// Endpoint to get fast food alternatives
 app.post('/api/fastfood-alternatives', async (req, res) => {
   try {
     const { chain, macros } = req.body;
     const randomSeed = Math.floor(Math.random() * 1000000);
-    const previousSuggestions = getPreviousSuggestions(req);
     const prompt = `You are a nutrition and fast food expert. Given the following macro requirements:
     - Protein: ${macros.protein}g
     - Carbs: ${macros.carbs}g
     - Fats: ${macros.fats}g
     - Calories: ${macros.calories}
-    
-    ONLY suggest menu items from ${chain} where ALL of the following are true:
-    - Protein is within ±10% of the requested value
-    - Carbs are within ±10% of the requested value
-    - Fats are within ±10% of the requested value
-    - Calories are within ±10% of the requested value
-    If no such item exists, return an empty array and do NOT suggest any item that does not meet this requirement. Do NOT make up numbers to fit the macros. Only suggest real, plausible menu items that naturally fit the macros. Be strict and do not relax these requirements.
-    Suggest 3 DIFFERENT menu items from ${chain} that match these macros as closely as possible (within ±10% for each macro, if possible). The items should be significantly different from each other, not just variations of the same item with different quantities. Each time this is requested, you must suggest new items that have not been suggested before, and avoid repeating previous results.
 
-    For each item, provide:
-    1. The menu item name
-    2. A brief description
-    3. The macro breakdown (protein, carbs, fats, calories)
-    4. If the macros are not an exact match, show the difference for each macro in a 'difference' field as a number (positive or negative, but do not use a plus sign, just the number).
-    5. A brief note about any modifications or customizations that might help match the macros better (e.g., "Order without the bun to reduce carbs", "Add extra protein to increase protein content")
-    
+    ONLY suggest menu items from ${chain} where ALL macros are within ±10% of the requested values.
+    If no such item exists, return an empty array. Do NOT make up numbers.
+    Suggest 3 DIFFERENT menu items. Each time suggest new items, avoid repeating previous results.
     Random seed: ${randomSeed}
-    
-    IMPORTANT: Respond with ONLY valid JSON. Do not include any markdown formatting, explanations, or text outside the JSON structure.
-    
-    Format the response as a JSON array of objects with the following structure. If no item fits, return an empty array:
-    [
-      {
-        "meal": "menu item name",
-        "description": "brief description",
-        "macros": {
-          "protein": number,
-          "carbs": number,
-          "fats": number,
-          "calories": number
-        },
-        "difference": {
-          "protein": number,
-          "carbs": number,
-          "fats": number,
-          "calories": number
-        },
-        "customization": "suggested modifications to better match macros"
-      }
-    ]`;
+
+    IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
+    [{ "meal": "", "description": "", "macros": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "difference": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "customization": "" }]`;
+
     const completion = await openai.chat.completions.create({
-      messages: [{ role: "user", content: prompt }],
-      model: "gpt-4o-mini",
+      messages: [{ role: 'user', content: prompt }],
+      model: 'gpt-4o-mini',
       temperature: 0.7,
     });
-    const suggestions = safeJsonParse(completion.choices[0].message.content);
-    res.json({ suggestions: normalizeSuggestions(suggestions) });
-  } catch (error) {
-    console.error('Error in /api/fastfood-alternatives:', error);
-    if (error.message.includes('Unable to parse JSON')) {
-      res.status(500).json({ error: 'Failed to parse fast food alternatives from AI response' });
-    } else {
-      res.status(500).json({ error: 'Failed to generate fast food alternatives' });
-    }
+    res.json({ suggestions: normalizeSuggestions(safeJsonParse(completion.choices[0].message.content)) });
+  } catch (err) {
+    console.error('Error in /api/fastfood-alternatives:', err);
+    res.status(500).json({ error: 'Failed to generate fast food alternatives' });
   }
 });
 
-// Endpoint to save a meal as favorite
-app.post('/api/favorites/save', (req, res) => {
+// ─── Favorites routes (protected) ────────────────────────────────────────────
+
+app.post('/api/favorites/save', authMiddleware, async (req, res) => {
   try {
     const { meal } = req.body;
-    if (!meal) {
-      return res.status(400).json({ error: 'Meal data is required' });
-    }
-    
-    // Add timestamp and unique ID
-    const favoriteMeal = {
-      ...meal,
-      id: Date.now().toString(),
-      savedAt: new Date().toISOString()
-    };
-    
-    favoriteMeals.push(favoriteMeal);
-    res.json({ success: true, message: 'Meal saved to favorites', meal: favoriteMeal });
-  } catch (error) {
-    console.error('Error saving favorite meal:', error);
+    if (!meal) return res.status(400).json({ error: 'Meal data is required' });
+
+    const favorite = await Favorite.create({
+      userId: req.userId,
+      meal: meal.meal,
+      description: meal.description,
+      macros: meal.macros,
+      ingredients: meal.ingredients || [],
+      instructions: meal.instructions || [],
+      customization: meal.customization,
+    });
+
+    res.status(201).json({ success: true, meal: { ...favorite.toObject(), id: favorite._id } });
+  } catch (err) {
+    console.error('Error saving favorite:', err);
     res.status(500).json({ error: 'Failed to save favorite meal' });
   }
 });
 
-// Endpoint to get all favorite meals
-app.get('/api/favorites', (req, res) => {
+app.get('/api/favorites', authMiddleware, async (req, res) => {
   try {
-    res.json({ favorites: favoriteMeals });
-  } catch (error) {
-    console.error('Error retrieving favorite meals:', error);
+    const favorites = await Favorite.find({ userId: req.userId }).sort({ createdAt: -1 });
+    res.json({ favorites: favorites.map(f => ({ ...f.toObject(), id: f._id })) });
+  } catch (err) {
+    console.error('Error retrieving favorites:', err);
     res.status(500).json({ error: 'Failed to retrieve favorite meals' });
   }
 });
 
-// Endpoint to remove a meal from favorites
-app.delete('/api/favorites/:id', (req, res) => {
+app.delete('/api/favorites/:id', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const initialLength = favoriteMeals.length;
-    favoriteMeals = favoriteMeals.filter(meal => meal.id !== id);
-    
-    if (favoriteMeals.length === initialLength) {
-      return res.status(404).json({ error: 'Favorite meal not found' });
-    }
-    
-    res.json({ success: true, message: 'Meal removed from favorites' });
-  } catch (error) {
-    console.error('Error removing favorite meal:', error);
+    const deleted = await Favorite.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+    if (!deleted) return res.status(404).json({ error: 'Favorite meal not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error removing favorite:', err);
     res.status(500).json({ error: 'Failed to remove favorite meal' });
   }
 });
 
-// Endpoint to generate meal suggestions based on favorite meals
-app.post('/api/favorites/suggest', async (req, res) => {
+app.post('/api/favorites/suggest', authMiddleware, async (req, res) => {
   try {
     const { macros, preferences } = req.body;
-    
+    const favoriteMeals = await Favorite.find({ userId: req.userId });
+
     if (favoriteMeals.length === 0) {
       return res.json({ suggestions: [], message: 'No favorite meals to base suggestions on' });
     }
-    
-    // Analyze favorite meals to understand user preferences
+
     const favoriteCuisines = [...new Set(favoriteMeals.map(meal => {
-      // Extract cuisine from meal name or description
-      const mealText = `${meal.meal} ${meal.description}`.toLowerCase();
-      for (const cuisine of CUISINES) {
-        if (cuisine !== 'Any' && mealText.includes(cuisine.toLowerCase())) {
-          return cuisine;
-        }
-      }
-      return 'Any';
+      const text = `${meal.meal} ${meal.description}`.toLowerCase();
+      return CUISINES.find(c => c !== 'Any' && text.includes(c.toLowerCase())) || 'Any';
     }))];
-    
     const mostCommonCuisine = favoriteCuisines.filter(c => c !== 'Any')[0] || 'Any';
-    
-    // Calculate average macro ratios from favorites
-    const avgProtein = favoriteMeals.reduce((sum, meal) => sum + meal.macros.protein, 0) / favoriteMeals.length;
-    const avgCarbs = favoriteMeals.reduce((sum, meal) => sum + meal.macros.carbs, 0) / favoriteMeals.length;
-    const avgFats = favoriteMeals.reduce((sum, meal) => sum + meal.macros.fats, 0) / favoriteMeals.length;
-    
-    // Determine macro priority based on favorites
-    let macroPriority = '';
-    if (avgProtein > avgCarbs && avgProtein > avgFats) {
-      macroPriority = 'Focus on high protein meals similar to your favorites.';
-    } else if (avgCarbs > avgProtein && avgCarbs > avgFats) {
-      macroPriority = 'Focus on high carb meals similar to your favorites.';
-    } else if (avgFats > avgProtein && avgFats > avgCarbs) {
-      macroPriority = 'Focus on high fat meals similar to your favorites.';
-    } else {
-      macroPriority = 'Balance all macros similar to your favorites.';
-    }
-    
+
+    const avgProtein = favoriteMeals.reduce((s, m) => s + (m.macros?.protein || 0), 0) / favoriteMeals.length;
+    const avgCarbs = favoriteMeals.reduce((s, m) => s + (m.macros?.carbs || 0), 0) / favoriteMeals.length;
+    const avgFats = favoriteMeals.reduce((s, m) => s + (m.macros?.fats || 0), 0) / favoriteMeals.length;
+
+    let macroPriority = 'Balance all macros similar to your favorites.';
+    if (avgProtein > avgCarbs && avgProtein > avgFats) macroPriority = 'Focus on high protein meals similar to your favorites.';
+    else if (avgCarbs > avgProtein && avgCarbs > avgFats) macroPriority = 'Focus on high carb meals similar to your favorites.';
+    else if (avgFats > avgProtein && avgFats > avgCarbs) macroPriority = 'Focus on high fat meals similar to your favorites.';
+
+    const excludeList = favoriteMeals.map(m => m.meal);
     const randomSeed = Math.floor(Math.random() * 1000000);
-    const excludeList = favoriteMeals.map(meal => meal.meal);
-    
+
     const prompt = `Based on the user's favorite meals, generate new meal suggestions that match their preferences.
 
-    User's favorite meals: ${favoriteMeals.map(meal => meal.meal).join(', ')}
+    User's favorite meals: ${favoriteMeals.map(m => m.meal).join(', ')}
     Preferred cuisine style: ${mostCommonCuisine}
-    Average macro preferences from favorites:
-    - Protein: ${avgProtein.toFixed(1)}g
-    - Carbs: ${avgCarbs.toFixed(1)}g
-    - Fats: ${avgFats.toFixed(1)}g
+    Average macro preferences - Protein: ${avgProtein.toFixed(1)}g, Carbs: ${avgCarbs.toFixed(1)}g, Fats: ${avgFats.toFixed(1)}g
 
     Current macro requirements:
-    - Protein: ${macros.protein}g
-    - Carbs: ${macros.carbs}g
-    - Fats: ${macros.fats}g
-    - Calories: ${macros.calories}
-    
+    - Protein: ${macros.protein}g, Carbs: ${macros.carbs}g, Fats: ${macros.fats}g, Calories: ${macros.calories}
+
     Preferences: ${preferences}
     ${macroPriority}
-    
-    Do NOT suggest any of these dishes: ${excludeList.join(", ")}.
-    Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, say so and do not suggest any dish that does not meet this requirement. Do not make up numbers to fit the macros. Instead, only suggest real, plausible dishes that naturally fit the macros.
-    Suggest 3 NEW meals that match the user's style and preferences from their favorites, but are different dishes. The meals should be significantly different from each other and from their existing favorites.
 
-    For each meal, provide:
-    1. The meal name
-    2. A brief description
-    3. The macro breakdown (protein, carbs, fats, calories)
-    4. A detailed recipe:
-       - For each ingredient, specify: name, state (raw/cooked), exact quantity with units, and calories for that amount.
-       - Specify if the weight is for raw or cooked ingredient.
-       - Specify the cooking method and step-by-step instructions.
-       - Use only common ingredients and realistic cooking methods.
-    5. A nutrition table: for each ingredient, show name, state, quantity, protein, carbs, fats, and calories.
-    6. If the macros are not an exact match, show the difference for each macro in a 'difference' field as a number (positive or negative, but do not use a plus sign, just the number).
-    7. Step-by-step cooking instructions as an array of strings.
-    
+    Do NOT suggest: ${excludeList.join(', ')}.
+    Only suggest meals within ±20% of the requested macros. Suggest 3 NEW meals matching the user's style.
     Random seed: ${randomSeed}
-    
-    IMPORTANT: Respond with ONLY valid JSON. Do not include any markdown formatting, explanations, or text outside the JSON structure.
-    
-    Format the response as a JSON array of objects with the following structure. If no dish fits, return an empty array:
-    [
-      {
-        "meal": "meal name",
-        "description": "brief description",
-        "macros": {
-          "protein": number,
-          "carbs": number,
-          "fats": number,
-          "calories": number
-        },
-        "difference": {
-          "protein": number,
-          "carbs": number,
-          "fats": number,
-          "calories": number
-        },
-        "ingredients": [
-          {
-            "name": "ingredient name",
-            "state": "raw/cooked",
-            "quantity": "amount with units",
-            "protein": number,
-            "carbs": number,
-            "fats": number,
-            "calories": number
-          }
-        ],
-        "instructions": [
-          "Step 1...",
-          "Step 2..."
-        ]
-      }
-    ]`;
-    
+
+    IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
+    [{ "meal": "", "description": "", "macros": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "difference": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "ingredients": [{ "name": "", "state": "", "quantity": "", "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }], "instructions": ["Step 1..."] }]`;
+
     const completion = await openai.chat.completions.create({
-      messages: [{ role: "user", content: prompt }],
-      model: "gpt-4o-mini",
+      messages: [{ role: 'user', content: prompt }],
+      model: 'gpt-4o-mini',
       temperature: 0.7,
     });
-    
-    const suggestions = safeJsonParse(completion.choices[0].message.content);
-    res.json({ suggestions: normalizeSuggestions(suggestions) });
-  } catch (error) {
-    console.error('Error generating favorite-based suggestions:', error);
-    if (error.message.includes('Unable to parse JSON')) {
-      res.status(500).json({ error: 'Failed to parse favorite-based suggestions from AI response' });
-    } else {
-      res.status(500).json({ error: 'Failed to generate favorite-based suggestions' });
-    }
+
+    res.json({ suggestions: normalizeSuggestions(safeJsonParse(completion.choices[0].message.content)) });
+  } catch (err) {
+    console.error('Error generating favorite-based suggestions:', err);
+    res.status(500).json({ error: 'Failed to generate favorite-based suggestions' });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-}); 
+// ─── Meal plan routes (protected) ─────────────────────────────────────────────
+
+app.get('/api/mealplan', authMiddleware, async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: 'Date is required' });
+    const plan = await MealPlan.findOne({ userId: req.userId, date });
+    res.json({ plan: plan || { date, breakfast: null, lunch: null, dinner: null } });
+  } catch (err) {
+    console.error('Error fetching meal plan:', err);
+    res.status(500).json({ error: 'Failed to fetch meal plan' });
+  }
+});
+
+app.post('/api/mealplan', authMiddleware, async (req, res) => {
+  try {
+    const { date, slot, meal } = req.body;
+    if (!date || !slot || !meal) {
+      return res.status(400).json({ error: 'date, slot, and meal are required' });
+    }
+    if (!['breakfast', 'lunch', 'dinner'].includes(slot)) {
+      return res.status(400).json({ error: 'slot must be breakfast, lunch, or dinner' });
+    }
+
+    const plan = await MealPlan.findOneAndUpdate(
+      { userId: req.userId, date },
+      { $set: { [slot]: meal } },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, plan });
+  } catch (err) {
+    console.error('Error saving meal plan:', err);
+    res.status(500).json({ error: 'Failed to save meal plan' });
+  }
+});
+
+app.delete('/api/mealplan/:date/:slot', authMiddleware, async (req, res) => {
+  try {
+    const { date, slot } = req.params;
+    if (!['breakfast', 'lunch', 'dinner'].includes(slot)) {
+      return res.status(400).json({ error: 'slot must be breakfast, lunch, or dinner' });
+    }
+
+    await MealPlan.findOneAndUpdate(
+      { userId: req.userId, date },
+      { $set: { [slot]: null } }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error removing meal from plan:', err);
+    res.status(500).json({ error: 'Failed to remove meal from plan' });
+  }
+});
+
+app.listen(port, () => console.log(`Server running on port ${port}`));
