@@ -23,39 +23,39 @@ export default function LoginPage({ onSwitchToRegister }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+    <div className="min-h-screen bg-white dark:bg-[#080810] flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-white dark:bg-[#0e0e1a] rounded-3xl shadow-xl dark:shadow-none p-8 border border-gray-100 dark:border-white/8">
         <div className="flex items-center gap-2 mb-8">
           <img src="https://img.icons8.com/color/96/salad.png" alt="logo" className="w-8 h-8" />
-          <span className="text-2xl font-extrabold text-gray-800">MacroBuddy</span>
+          <span className="text-2xl font-extrabold text-gray-800 dark:text-white">MacroBuddy</span>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
-        <p className="text-sm text-gray-500 mb-6">Sign in to your account</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Welcome back</h2>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mb-6">Sign in to your account</p>
 
         {error && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 text-red-600 text-sm">{error}</div>
+          <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm border border-red-100 dark:border-red-500/20">{error}</div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Email</label>
             <input
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
               placeholder="you@example.com"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
               placeholder="••••••••"
             />
           </div>
@@ -69,14 +69,14 @@ export default function LoginPage({ onSwitchToRegister }) {
         </form>
 
         <div className="mt-5 flex items-center gap-3">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400 font-medium">or</span>
-          <div className="flex-1 h-px bg-gray-200" />
+          <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+          <span className="text-xs text-gray-400 dark:text-slate-500 font-medium">or</span>
+          <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
         </div>
 
         <button
           onClick={() => { window.location.href = GOOGLE_AUTH_URL; }}
-          className="mt-4 w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition shadow-sm"
+          className="mt-4 w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/10 transition"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -87,9 +87,9 @@ export default function LoginPage({ onSwitchToRegister }) {
           Continue with Google
         </button>
 
-        <p className="mt-5 text-center text-sm text-gray-500">
+        <p className="mt-5 text-center text-sm text-gray-500 dark:text-slate-400">
           Don't have an account?{' '}
-          <button onClick={onSwitchToRegister} className="text-indigo-600 font-semibold hover:underline">
+          <button onClick={onSwitchToRegister} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
             Sign up
           </button>
         </p>

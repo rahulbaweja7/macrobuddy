@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import api from './utils/api';
 import Navbar from './components/Navbar';
 import Notification from './components/Notification';
@@ -177,22 +178,22 @@ function AppContent() {
 
   // ── Main app ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-200 flex flex-col font-sans">
+    <div className="min-h-screen bg-white dark:bg-[#080810] flex flex-col font-sans">
       <Notification {...notification} />
-      <header className="bg-white shadow-sm sticky top-0 z-10">
+      <header className="bg-white dark:bg-[#080810] border-b border-gray-200 dark:border-white/5 sticky top-0 z-10">
         <div className="relative max-w-5xl mx-auto flex items-center justify-between py-4 px-6">
           <div className="flex items-center gap-2 shrink-0">
             <img src="https://img.icons8.com/color/96/salad.png" alt="MacroBuddy Logo" className="w-8 h-8" />
-            <span className="text-xl font-extrabold text-gray-800 tracking-tight">MacroBuddy</span>
+            <span className="text-xl font-extrabold text-gray-800 dark:text-white tracking-tight">MacroBuddy</span>
           </div>
           <div className="flex items-center gap-3">
             <Navbar page={page} setPage={setPage} user={user} logout={logout} />
             {/* Desktop user + sign out — hidden on mobile (in hamburger instead) */}
-            <div className="hidden md:flex items-center gap-3 border-l pl-4 border-gray-200">
-              <span className="text-sm text-gray-600 font-medium">{user.name}</span>
+            <div className="hidden md:flex items-center gap-3 border-l pl-4 border-gray-200 dark:border-white/10">
+              <span className="text-sm text-gray-600 dark:text-slate-400 font-medium">{user.name}</span>
               <button
                 onClick={logout}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium transition"
+                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-white/10 font-medium transition"
               >
                 Sign out
               </button>
@@ -266,8 +267,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

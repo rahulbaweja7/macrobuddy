@@ -1,119 +1,121 @@
-import React from 'react';
+import { FaRegBookmark } from 'react-icons/fa';
 import FavoritesList from '../components/FavoritesList';
 import MealCard from '../components/MealCard';
 
+const Spinner = () => (
+  <svg className="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+  </svg>
+);
+
 export default function FavoritesPage({
-  favorites,
-  favoritesLoading,
-  favoritesError,
-  loadFavorites,
-  expandedFavoriteId,
-  setExpandedFavoriteId,
-  onRemove,
-  macros,
-  setMacros,
-  favoriteSuggestions,
-  favoriteSuggestionsLoading,
-  generateFavoriteSuggestions,
-  expandedFavoriteSuggestionIndex,
-  setExpandedFavoriteSuggestionIndex,
-  onSave
+  favorites, favoritesLoading, favoritesError, loadFavorites,
+  expandedFavoriteId, setExpandedFavoriteId, onRemove,
+  macros, setMacros, favoriteSuggestions, favoriteSuggestionsLoading,
+  generateFavoriteSuggestions, expandedFavoriteSuggestionIndex,
+  setExpandedFavoriteSuggestionIndex, onSave,
 }) {
   return (
-    <section className="flex-1 flex flex-col items-center justify-center py-12 px-4">
-      <div className="max-w-4xl w-full mx-auto text-center mb-10">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">Your Favorite Meals</h1>
-        <p className="text-lg md:text-xl text-gray-600 mb-6">Manage your saved meals and get personalized suggestions based on your preferences.</p>
-      </div>
-      {/* Favorite-based suggestions section */}
-      {favorites.length > 0 && (
-        <div className="max-w-4xl w-full mx-auto bg-white/90 rounded-2xl shadow-xl border border-gray-200 p-8 mb-10">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Get Suggestions Based on Your Favorites</h2>
-            <p className="text-gray-600 mb-4">Enter your macro requirements to get new meal suggestions that match your saved preferences.</p>
-            <form onSubmit={e => { e.preventDefault(); generateFavoriteSuggestions(); }} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1 text-sm">Protein (g)</label>
-                <input type="number" value={macros.protein} onChange={e => setMacros(prev => ({ ...prev, protein: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
-              </div>
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1 text-sm">Carbs (g)</label>
-                <input type="number" value={macros.carbs} onChange={e => setMacros(prev => ({ ...prev, carbs: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
-              </div>
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1 text-sm">Fats (g)</label>
-                <input type="number" value={macros.fats} onChange={e => setMacros(prev => ({ ...prev, fats: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
-              </div>
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1 text-sm">Calories</label>
-                <input type="number" value={macros.calories} onChange={e => setMacros(prev => ({ ...prev, calories: e.target.value }))} className="w-full rounded-lg px-3 py-2 bg-gray-50 border border-gray-300 focus:ring-2 focus:ring-indigo-400 outline-none text-sm" required />
-              </div>
-              <div className="md:col-span-4">
-                <button type="submit" disabled={favoriteSuggestionsLoading} className="w-full px-6 py-3 rounded-full bg-indigo-600 text-white font-bold shadow-lg hover:bg-indigo-700 transition-all duration-200 disabled:opacity-60 flex items-center justify-center gap-3">
-                  {favoriteSuggestionsLoading && (<svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>)}
-                  {favoriteSuggestionsLoading ? 'Generating...' : 'Get Personalized Suggestions'}
-                </button>
-              </div>
-            </form>
-          </div>
-          {/* Favorite-based suggestions */}
-          {favoriteSuggestions.length > 0 && (
-            <div className="mt-8 animate-fade-in">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">Personalized Suggestions Based on Your Favorites</h3>
-              <div className="flex flex-col gap-6">
-                {favoriteSuggestions.map((suggestion, index) => (
-                  <MealCard
-                    key={index}
-                    meal={suggestion}
-                    expanded={expandedFavoriteSuggestionIndex === index}
-                    onExpand={() => setExpandedFavoriteSuggestionIndex(expandedFavoriteSuggestionIndex === index ? null : index)}
-                    isFavorite={false}
-                    onSave={onSave}
-                    showSave={true}
-                    showRemove={false}
-                  />
+    <div className="flex-1 bg-white dark:bg-[#080810]">
+      <div className="max-w-3xl mx-auto px-6 py-10">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Favorites</h1>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Your saved meals and personalized suggestions.</p>
+        </div>
+
+        {favorites.length > 0 && (
+          <div className="bg-white dark:bg-[#0e0e1a] rounded-xl border border-gray-200 dark:border-white/8 shadow-sm dark:shadow-none p-6 mb-8">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Get suggestions from your taste profile</h2>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mb-4">We'll analyze your saved meals and suggest new ones that match your style.</p>
+            <form
+              onSubmit={e => { e.preventDefault(); generateFavoriteSuggestions(); }}
+              className="space-y-4"
+            >
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { key: 'protein', label: 'Protein (g)' },
+                  { key: 'carbs',   label: 'Carbs (g)' },
+                  { key: 'fats',    label: 'Fats (g)' },
+                  { key: 'calories',label: 'Calories' },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">{label}</label>
+                    <input
+                      type="number"
+                      value={macros[key]}
+                      onChange={e => setMacros(prev => ({ ...prev, [key]: e.target.value }))}
+                      required
+                      min="0"
+                      className="w-full rounded-lg px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-500/50"
+                      placeholder="0"
+                    />
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-      {/* Favorites list */}
-      <div className="max-w-4xl w-full mx-auto">
+              <button
+                type="submit"
+                disabled={favoriteSuggestionsLoading}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
+              >
+                {favoriteSuggestionsLoading && <Spinner />}
+                {favoriteSuggestionsLoading ? 'Generating…' : 'Generate personalized suggestions'}
+              </button>
+            </form>
+
+            {favoriteSuggestions.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-gray-100 dark:border-white/5">
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-3">
+                  Suggestions for you
+                </h3>
+                <div className="flex flex-col gap-3">
+                  {favoriteSuggestions.map((s, i) => (
+                    <MealCard
+                      key={i}
+                      meal={s}
+                      expanded={expandedFavoriteSuggestionIndex === i}
+                      onExpand={() => setExpandedFavoriteSuggestionIndex(expandedFavoriteSuggestionIndex === i ? null : i)}
+                      isFavorite={false}
+                      onSave={onSave}
+                      showSave={true}
+                      showRemove={false}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {favoritesLoading ? (
-          <div className="text-center py-12">
-            <svg className="animate-spin h-8 w-8 text-indigo-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-            </svg>
-            <p className="text-gray-600">Loading your favorites...</p>
+          <div className="flex items-center justify-center py-16 gap-3 text-gray-400 dark:text-slate-500">
+            <Spinner /> <span className="text-sm">Loading favorites…</span>
           </div>
         ) : favoritesError ? (
-          <div className="text-center py-12">
-            <p className="text-red-600 mb-4">{favoritesError}</p>
-            <button onClick={loadFavorites} className="px-6 py-2 rounded-full bg-indigo-600 text-white font-semibold shadow hover:bg-indigo-700 transition-all duration-200">
-              Try Again
+          <div className="text-center py-16">
+            <p className="text-sm text-red-500 dark:text-red-400 mb-3">{favoritesError}</p>
+            <button onClick={loadFavorites} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+              Try again
             </button>
           </div>
         ) : favorites.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl">★</span>
+          <div className="text-center py-16">
+            <div className="w-12 h-12 bg-gray-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FaRegBookmark className="text-gray-400 dark:text-slate-500" size={18} />
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">No Favorite Meals Yet</h3>
-            <p className="text-gray-600 mb-6">Start saving meals you love to get personalized suggestions!</p>
-            <button onClick={loadFavorites} className="px-6 py-3 rounded-full bg-indigo-600 text-white font-bold shadow-lg hover:bg-indigo-700 transition-all duration-200">
+            <h3 className="font-semibold text-gray-800 dark:text-white mb-1">No favorites yet</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400 mb-5">Save meals from Meal Suggestions or Fast Food to see them here.</p>
+            <button onClick={loadFavorites} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-white/10 transition">
               Refresh
             </button>
           </div>
         ) : (
-          <div className="animate-fade-in">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-extrabold text-gray-800">Saved Favorites ({favorites.length})</h2>
-              <button 
-                onClick={loadFavorites}
-                className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 font-semibold shadow hover:bg-gray-200 transition-all duration-200"
-              >
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
+                {favorites.length} saved meal{favorites.length !== 1 ? 's' : ''}
+              </h2>
+              <button onClick={loadFavorites} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-xs font-medium text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-white/10 transition">
                 Refresh
               </button>
             </div>
@@ -126,6 +128,6 @@ export default function FavoritesPage({
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
-} 
+}
