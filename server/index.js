@@ -55,7 +55,10 @@ passport.use(new GoogleStrategy(
   }
 ));
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.XAI_API_KEY,
+  baseURL: 'https://api.x.ai/v1',
+});
 
 const CUISINES = [
   'Any', 'American', 'Italian', 'Mexican', 'Indian', 'Chinese', 'Japanese',
@@ -242,7 +245,7 @@ app.post('/api/suggest-meals', async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: buildPrompt(true) }],
-      model: 'gpt-4o-mini',
+      model: 'grok-3-mini',
       temperature: 0.7,
     });
     let suggestions = safeJsonParse(completion.choices[0].message.content);
@@ -250,7 +253,7 @@ app.post('/api/suggest-meals', async (req, res) => {
     if (Array.isArray(suggestions) && suggestions.length === 0) {
       const fallback = await openai.chat.completions.create({
         messages: [{ role: 'user', content: buildPrompt(false) }],
-        model: 'gpt-4o-mini',
+        model: 'grok-3-mini',
         temperature: 0.7,
       });
       suggestions = safeJsonParse(fallback.choices[0].message.content);
@@ -283,7 +286,7 @@ app.post('/api/fastfood-alternatives', async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'gpt-4o-mini',
+      model: 'grok-3-mini',
       temperature: 0.7,
     });
     res.json({ suggestions: normalizeSuggestions(safeJsonParse(completion.choices[0].message.content)) });
@@ -386,7 +389,7 @@ app.post('/api/favorites/suggest', authMiddleware, async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'gpt-4o-mini',
+      model: 'grok-3-mini',
       temperature: 0.7,
     });
 
