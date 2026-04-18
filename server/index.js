@@ -56,8 +56,8 @@ passport.use(new GoogleStrategy(
 ));
 
 const openai = new OpenAI({
-  apiKey: process.env.XAI_API_KEY,
-  baseURL: 'https://api.x.ai/v1',
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: 'https://api.groq.com/openai/v1',
 });
 
 const CUISINES = [
@@ -212,7 +212,7 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 app.post('/api/suggest-meals', async (req, res) => {
   try {
-    const { macros, preferences } = req.body;
+    const { macros, preferences, mealType = 'any meal' } = req.body;
     const p = Number(macros.protein), c = Number(macros.carbs), f = Number(macros.fats);
     let macroPriority = '';
     if (p > c && p > f) macroPriority = 'Focus on high protein, low ' + (c < f ? 'carbs' : 'fats') + ' meals.';
@@ -220,15 +220,24 @@ app.post('/api/suggest-meals', async (req, res) => {
     else if (f > p && f > c) macroPriority = 'Focus on high fat, low ' + (p < c ? 'protein' : 'carbs') + ' meals.';
     else macroPriority = 'Balance all macros.';
 
+    const mealTypeContext = {
+      Breakfast: 'morning breakfast — think eggs, oats, smoothie bowls, toast variations, or quick prep foods appropriate to start the day',
+      Lunch:     'midday lunch — think salads, wraps, bowls, soups, or hearty sandwiches appropriate for midday energy',
+      Dinner:    'evening dinner — think warm, satisfying, cooked meals like stir-fries, roasted proteins, pasta, or curries',
+      Snack:     'between-meal snack — think small bites, protein bars alternatives, dips, fruit combos, or light options under ~300 calories',
+    };
+
+    const mealContext = mealTypeContext[mealType] || 'any meal';
     const randomSeed = Math.floor(Math.random() * 1000000);
     const excludeList = COMMON_DISHES;
 
-    const buildPrompt = (strict) => `Given the following macro requirements:
+    const buildPrompt = (strict) => `You are a nutritionist. Suggest 3 creative ${mealType} recipes that fit these macros per serving:
     - Protein: ${macros.protein}g
     - Carbs: ${macros.carbs}g
     - Fats: ${macros.fats}g
-    - Calories: ${macros.calories}
+    - Calories: ${macros.calories} kcal
 
+    Meal type context: ${mealContext}.
     Preferences: ${preferences}
     ${macroPriority}
 
@@ -237,7 +246,7 @@ app.post('/api/suggest-meals', async (req, res) => {
       ? 'Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, return an empty array.'
       : 'Suggest the 3 closest real, plausible meals. For each, show the macro difference.'
     }
-    Suggest 3 LESS COMMON, creative, or regional meals from the selected cuisine. The meals should be significantly different from each other.
+    The 3 meals must be distinctly different from each other. Prefer less common, creative recipes.
     Random seed: ${randomSeed}
 
     IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
@@ -245,7 +254,7 @@ app.post('/api/suggest-meals', async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: buildPrompt(true) }],
-      model: 'grok-3-mini',
+      model: 'llama-3.3-70b-versatile',
       temperature: 0.7,
     });
     let suggestions = safeJsonParse(completion.choices[0].message.content);
@@ -253,7 +262,7 @@ app.post('/api/suggest-meals', async (req, res) => {
     if (Array.isArray(suggestions) && suggestions.length === 0) {
       const fallback = await openai.chat.completions.create({
         messages: [{ role: 'user', content: buildPrompt(false) }],
-        model: 'grok-3-mini',
+        model: 'llama-3.3-70b-versatile',
         temperature: 0.7,
       });
       suggestions = safeJsonParse(fallback.choices[0].message.content);
@@ -286,7 +295,7 @@ app.post('/api/fastfood-alternatives', async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'grok-3-mini',
+      model: 'llama-3.3-70b-versatile',
       temperature: 0.7,
     });
     res.json({ suggestions: normalizeSuggestions(safeJsonParse(completion.choices[0].message.content)) });
@@ -389,7 +398,7 @@ app.post('/api/favorites/suggest', authMiddleware, async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'grok-3-mini',
+      model: 'llama-3.3-70b-versatile',
       temperature: 0.7,
     });
 

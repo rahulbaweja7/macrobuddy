@@ -1,4 +1,4 @@
-import { FaChevronDown, FaChevronUp, FaBookmark, FaRegBookmark, FaTrash } from 'react-icons/fa';
+import { FaChevronDown, FaChevronUp, FaBookmark, FaRegBookmark, FaTrash, FaPlus, FaCheck } from 'react-icons/fa';
 
 const normalizeInstruction = (input) => {
   const value = String(input ?? '').trim();
@@ -59,7 +59,7 @@ const DeltaBadge = ({ label, value }) => {
   );
 };
 
-export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave, onRemove, showSave, showRemove }) {
+export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave, onRemove, showSave, showRemove, onAddToDay, isInDay }) {
   if (!meal) return null;
   const macros = meal.macros || { protein: 0, carbs: 0, fats: 0, calories: 0 };
 
@@ -77,6 +77,19 @@ export default function MealCard({ meal, expanded, onExpand, isFavorite, onSave,
 
           {/* Actions */}
           <div className="flex items-center gap-1 shrink-0 mt-0.5">
+            {onAddToDay && (
+              <button
+                onClick={e => { e.stopPropagation(); onAddToDay(meal); }}
+                title={isInDay ? 'Added to today' : 'Add to today\'s plan'}
+                className={`p-2 rounded-xl transition-all ${
+                  isInDay
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15'
+                    : 'text-gray-300 dark:text-slate-600 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
+                }`}
+              >
+                {isInDay ? <FaCheck size={12} /> : <FaPlus size={12} />}
+              </button>
+            )}
             {showSave && (
               <button
                 onClick={e => { e.stopPropagation(); onSave?.(meal); }}

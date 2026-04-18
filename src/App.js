@@ -42,7 +42,12 @@ function AppContent() {
   const [loading2, setLoading2] = useState(false);
   const [error, setError] = useState('');
   const [cuisine, setCuisine] = useState('Any');
+  const [mealType, setMealType] = useState('Breakfast');
   const [expandedIndex, setExpandedIndex] = useState(null);
+  const [dayPlan, setDayPlan] = useState({ Breakfast: null, Lunch: null, Dinner: null, Snack: null });
+
+  const addToDayPlan = (type, meal) => setDayPlan(prev => ({ ...prev, [type]: meal }));
+  const removeFromDayPlan = (type) => setDayPlan(prev => ({ ...prev, [type]: null }));
 
   // Fast food state
   const [ffMacros, setFFMacros] = useState({ protein: '', carbs: '', fats: '', calories: '' });
@@ -80,6 +85,7 @@ function AppContent() {
     try {
       const res = await api.post('/api/suggest-meals', {
         macros,
+        mealType,
         preferences: `healthy, balanced meals${cuisine && cuisine !== 'Any' ? ', cuisine: ' + cuisine : ''}`,
       });
       if (res.data.suggestions?.length > 0) {
@@ -187,7 +193,7 @@ function AppContent() {
             <span className="text-xl font-extrabold text-gray-800 dark:text-white tracking-tight">MacroBuddy</span>
           </div>
           <div className="flex items-center gap-3">
-            <Navbar page={page} setPage={setPage} user={user} logout={logout} />
+            <Navbar page={page} setPage={setPage} user={user} logout={logout} dayPlanCount={Object.values(dayPlan).filter(Boolean).length} />
             {/* Desktop user + sign out — hidden on mobile (in hamburger instead) */}
             <div className="hidden md:flex items-center gap-3 border-l pl-4 border-gray-200 dark:border-white/10">
               <span className="text-sm text-gray-600 dark:text-slate-400 font-medium">{user.name}</span>
@@ -221,6 +227,11 @@ function AppContent() {
           onRemove={removeFavorite}
           getFavoriteId={getFavoriteId}
           CUISINES={CUISINES}
+          mealType={mealType}
+          setMealType={setMealType}
+          dayPlan={dayPlan}
+          onAddToDay={addToDayPlan}
+          setPage={setPage}
         />
       )}
       {page === 'fastfood' && (
@@ -260,7 +271,14 @@ function AppContent() {
           onSave={saveFavorite}
         />
       )}
-      {page === 'mealplan' && <MealPlanPage />}
+      {page === 'mealplan' && (
+        <MealPlanPage
+          suggestedDayPlan={Object.values(dayPlan).some(Boolean) ? dayPlan : null}
+          onRemoveSuggested={removeFromDayPlan}
+          onClearSuggested={() => setDayPlan({ Breakfast: null, Lunch: null, Dinner: null, Snack: null })}
+          setPage={setPage}
+        />
+      )}
     </div>
   );
 }

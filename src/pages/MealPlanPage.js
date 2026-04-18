@@ -4,10 +4,13 @@ import 'react-calendar/dist/Calendar.css';
 import { FaEgg, FaUtensils, FaPizzaSlice, FaTimes, FaSpinner } from 'react-icons/fa';
 import api from '../utils/api';
 
+import { FaBolt } from 'react-icons/fa';
+
 const SLOTS = [
-  { key: 'breakfast', label: 'Breakfast', icon: <FaEgg className="text-yellow-500" />, color: 'bg-yellow-50 dark:bg-yellow-500/5 border-yellow-100 dark:border-yellow-500/15' },
-  { key: 'lunch',     label: 'Lunch',     icon: <FaUtensils className="text-green-500" />, color: 'bg-green-50 dark:bg-green-500/5 border-green-100 dark:border-green-500/15' },
-  { key: 'dinner',    label: 'Dinner',    icon: <FaPizzaSlice className="text-indigo-500" />, color: 'bg-indigo-50 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-500/15' },
+  { key: 'breakfast', label: 'Breakfast', emoji: '🌅', icon: <FaEgg className="text-yellow-500" />, color: 'bg-yellow-50 dark:bg-yellow-500/5 border-yellow-100 dark:border-yellow-500/15' },
+  { key: 'lunch',     label: 'Lunch',     emoji: '🥗', icon: <FaUtensils className="text-green-500" />, color: 'bg-green-50 dark:bg-green-500/5 border-green-100 dark:border-green-500/15' },
+  { key: 'dinner',    label: 'Dinner',    emoji: '🍽️', icon: <FaPizzaSlice className="text-indigo-500" />, color: 'bg-indigo-50 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-500/15' },
+  { key: 'snack',     label: 'Snack',     emoji: '🍎', icon: <span className="text-base">🍎</span>, color: 'bg-rose-50 dark:bg-rose-500/5 border-rose-100 dark:border-rose-500/15' },
 ];
 
 function formatDate(date) {
@@ -160,9 +163,9 @@ function MealPickerModal({ slot, onClose, onSelect }) {
   );
 }
 
-export default function MealPlanPage() {
+export default function MealPlanPage({ suggestedDayPlan, onRemoveSuggested, onClearSuggested, setPage }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [dayPlan, setDayPlan] = useState({ breakfast: null, lunch: null, dinner: null });
+  const [dayPlan, setDayPlan] = useState({ breakfast: null, lunch: null, dinner: null, snack: null });
   const [planLoading, setPlanLoading] = useState(false);
   const [activeModal, setActiveModal] = useState(null);
 
@@ -176,9 +179,10 @@ export default function MealPlanPage() {
         breakfast: res.data.plan?.breakfast || null,
         lunch: res.data.plan?.lunch || null,
         dinner: res.data.plan?.dinner || null,
+        snack: res.data.plan?.snack || null,
       });
     } catch {
-      setDayPlan({ breakfast: null, lunch: null, dinner: null });
+      setDayPlan({ breakfast: null, lunch: null, dinner: null, snack: null });
     } finally {
       setPlanLoading(false);
     }
@@ -196,6 +200,7 @@ export default function MealPlanPage() {
     } catch {
       console.error('Failed to save meal to plan');
     }
+    return true;
   };
 
   const handleRemoveMeal = async (slot) => {
@@ -220,11 +225,85 @@ export default function MealPlanPage() {
 
   const mealsLogged = SLOTS.filter(({ key }) => dayPlan[key]).length;
 
+
+  const suggestedMeals = suggestedDayPlan
+    ? SLOTS.filter(s => suggestedDayPlan[s.label])
+    : [];
+
+  const saveAllSuggested = async () => {
+    const today = formatDate(new Date());
+    for (const slot of suggestedMeals) {
+      const meal = suggestedDayPlan[slot.label];
+      if (meal) {
+        try {
+          await api.post('/api/mealplan', { date: today, slot: slot.key, meal });
+        } catch {}
+      }
+    }
+    if (formatDate(selectedDate) === today) fetchPlan(today);
+    onClearSuggested?.();
+  };
+
   return (
     <section className="flex-1 bg-white dark:bg-[#080810] py-10 px-4">
       <div className="max-w-3xl w-full mx-auto mb-8">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Meal Planner</h1>
         <p className="text-sm text-gray-500 dark:text-slate-400">Select a date and plan your meals.</p>
+
+        {/* Suggestions quick-add strip */}
+        {suggestedMeals.length > 0 && (
+          <div className="mt-5 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FaBolt size={11} className="text-indigo-500" />
+                <p className="text-xs font-bold tracking-wide text-indigo-600 dark:text-indigo-400 uppercase">From Meal Suggestions</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage?.('main')}
+                  className="text-xs font-semibold text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={saveAllSuggested}
+                  className="text-xs font-bold px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition"
+                >
+                  Save all to today
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              {suggestedMeals.map(slot => {
+                const meal = suggestedDayPlan[slot.label];
+                return (
+                  <div key={slot.key} className="flex items-center gap-3 bg-white dark:bg-[#0e0e1a] rounded-xl px-3 py-2.5 border border-indigo-100 dark:border-indigo-500/15">
+                    <span className="text-lg">{slot.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase">{slot.label}</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{meal.meal}</p>
+                      {meal.macros && (
+                        <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
+                          {meal.macros.protein}g P · {meal.macros.carbs}g C · {meal.macros.fats}g F · {meal.macros.calories} kcal
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        await handleSelectMeal(slot.key, meal);
+                        onRemoveSuggested?.(slot.label);
+                      }}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition shrink-0"
+                    >
+                      + Today
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-center mt-6">
           <div className="rounded-2xl shadow-lg dark:shadow-none p-4 bg-white dark:bg-[#0e0e1a] border border-gray-100 dark:border-white/8">
             <Calendar
