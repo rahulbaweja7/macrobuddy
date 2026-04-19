@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import api from './utils/api';
@@ -35,6 +35,19 @@ function AppContent() {
   const { user, loading, logout } = useAuth();
   const [authPage, setAuthPage] = useState('login');
   const [page, setPage] = useState('landing');
+
+  const PAGE_TITLES = {
+    landing:   'MacroBuddy',
+    main:      'Meal Suggestions — MacroBuddy',
+    fastfood:  'Fast Food Finder — MacroBuddy',
+    favorites: 'Favorites — MacroBuddy',
+    mealplan:  'Meal Plan — MacroBuddy',
+  };
+
+  useEffect(() => {
+    document.title = PAGE_TITLES[page] || 'MacroBuddy';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
 
   // Meal suggestions state
   const [macros, setMacros] = useState({ protein: '', carbs: '', fats: '', calories: '' });
@@ -187,8 +200,20 @@ function AppContent() {
     }
   };
 
+  // Redirect logged-in users away from marketing landing to app
+  useEffect(() => {
+    if (user && page === 'landing') setPage('main');
+  }, [user]);
+
   // ── Auth gate ─────────────────────────────────────────────────────────────
-  if (loading) return null;
+  if (loading) return (
+    <div className="min-h-screen bg-[#080810] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <p className="text-xs font-bold text-slate-500 tracking-widest uppercase">Loading</p>
+      </div>
+    </div>
+  );
 
   if (!user) {
     return authPage === 'login'
@@ -222,6 +247,7 @@ function AppContent() {
         </div>
       </header>
 
+      <div key={page} className="animate-page-in flex-1 flex flex-col min-h-0">
       {page === 'landing' && <HomePage setPage={setPage} />}
       {page === 'main' && (
         <MealSuggestionsPage
@@ -294,6 +320,7 @@ function AppContent() {
           setPage={setPage}
         />
       )}
+      </div>
     </div>
   );
 }
