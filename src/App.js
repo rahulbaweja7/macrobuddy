@@ -55,6 +55,7 @@ function AppContent() {
   const [ffResults, setFFResults] = useState([]);
   const [ffLoading, setFFLoading] = useState(false);
   const [ffError, setFFError] = useState('');
+  const [ffNoNewOptions, setFFNoNewOptions] = useState(false);
 
   // Favorites state
   const [favorites, setFavorites] = useState([]);
@@ -133,10 +134,23 @@ function AppContent() {
     if (e) e.preventDefault();
     setFFLoading(true);
     setFFError('');
+    setFFNoNewOptions(false);
+    const prevNames = ffResults.map(r => r.meal);
     setFFResults([]);
     try {
-      const res = await api.post('/api/fastfood-alternatives', { chain: selectedChain, macros: ffMacros });
-      setFFResults(res.data.suggestions);
+      const res = await api.post('/api/fastfood-alternatives', {
+        chain: selectedChain,
+        macros: ffMacros,
+        excludeItems: prevNames,
+      });
+      const newResults = res.data.suggestions || [];
+      const allDupes = newResults.length > 0 && newResults.every(r => prevNames.includes(r.meal));
+      if (allDupes || newResults.length === 0) {
+        setFFResults(prevNames.length > 0 ? res.data.suggestions : []);
+        setFFNoNewOptions(true);
+      } else {
+        setFFResults(newResults);
+      }
     } catch {
       setFFError('Failed to get fast food alternatives. Please try again.');
     } finally {
@@ -243,6 +257,7 @@ function AppContent() {
           ffResults={ffResults}
           ffLoading={ffLoading}
           ffError={ffError}
+          ffNoNewOptions={ffNoNewOptions}
           onInputChange={handleFFInputChange}
           onSubmit={handleFFSubmit}
           isFavorite={isFavorite}

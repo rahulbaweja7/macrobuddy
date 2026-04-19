@@ -277,8 +277,11 @@ app.post('/api/suggest-meals', async (req, res) => {
 
 app.post('/api/fastfood-alternatives', async (req, res) => {
   try {
-    const { chain, macros } = req.body;
+    const { chain, macros, excludeItems = [] } = req.body;
     const randomSeed = Math.floor(Math.random() * 1000000);
+    const excludeLine = excludeItems.length
+      ? `Do NOT suggest any of these items (already shown): ${excludeItems.join(', ')}.`
+      : '';
     const prompt = `You are a nutrition and fast food expert. Given the following macro requirements:
     - Protein: ${macros.protein}g
     - Carbs: ${macros.carbs}g
@@ -287,6 +290,7 @@ app.post('/api/fastfood-alternatives', async (req, res) => {
 
     ONLY suggest menu items from ${chain} where ALL macros are within ±10% of the requested values.
     If no such item exists, return an empty array. Do NOT make up numbers.
+    ${excludeLine}
     Suggest 3 DIFFERENT menu items. Each time suggest new items, avoid repeating previous results.
     Random seed: ${randomSeed}
 

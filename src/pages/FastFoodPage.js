@@ -29,7 +29,7 @@ function SkeletonCard() {
 }
 
 export default function FastFoodPage({
-  ffMacros, selectedChain, setSelectedChain, ffResults, ffLoading, ffError,
+  ffMacros, selectedChain, setSelectedChain, ffResults, ffLoading, ffError, ffNoNewOptions,
   onInputChange, onSubmit, isFavorite, onSave, onRemove, FAST_FOOD_CHAINS,
 }) {
   const [search, setSearch] = useState('');
@@ -163,6 +163,12 @@ export default function FastFoodPage({
         {/* Results */}
         {!ffLoading && ffResults.length > 0 && (
           <div className="mt-10">
+            {ffNoNewOptions && (
+              <div className="mb-4 flex items-center gap-2.5 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/25 text-amber-700 dark:text-amber-400 text-xs font-semibold">
+                <span className="text-base">🤷</span>
+                These are the only menu items at {selectedChain} that match your macros. Try adjusting your targets or switching chains.
+              </div>
+            )}
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 dark:text-slate-600 uppercase">
