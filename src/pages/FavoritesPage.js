@@ -88,6 +88,7 @@ export default function FavoritesPage({
                         <div className="relative flex items-baseline gap-1.5">
                           <input
                             type="number"
+                            inputMode="decimal"
                             value={macros[name]}
                             onChange={e => setMacros(prev => ({ ...prev, [name]: e.target.value }))}
                             required

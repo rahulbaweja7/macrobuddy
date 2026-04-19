@@ -206,6 +206,11 @@ function AppContent() {
     if (user && page === 'landing') setPage('main');
   }, [user]);
 
+  // Auto-load favorites when navigating to the favorites page
+  useEffect(() => {
+    if (page === 'favorites' && user) loadFavorites();
+  }, [page, user]);
+
   // ── Auth gate ─────────────────────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-screen bg-[#080810] flex items-center justify-center">

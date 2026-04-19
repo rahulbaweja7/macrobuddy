@@ -215,6 +215,7 @@ export default function MealSuggestionsPage({
                       <div className="relative flex items-baseline gap-1.5">
                         <input
                           type="number"
+                          inputMode="decimal"
                           name={name}
                           value={macros[name]}
                           onChange={onInputChange}
