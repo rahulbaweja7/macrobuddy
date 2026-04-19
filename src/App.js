@@ -9,6 +9,7 @@ import MealSuggestionsPage from './pages/MealSuggestionsPage';
 import FastFoodPage from './pages/FastFoodPage';
 import FavoritesPage from './pages/FavoritesPage';
 import MealPlanPage from './pages/MealPlanPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 
@@ -327,10 +328,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
