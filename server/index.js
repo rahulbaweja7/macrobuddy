@@ -81,7 +81,7 @@ const aiRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
   keyGenerator: (req) => req.userId || req.ip,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, ip: false },
   handler: (req, res) => {
     res.status(429).json({ error: 'Too many requests. You can make up to 30 AI requests per hour.' });
   },
