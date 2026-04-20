@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const OpenAI = require('openai');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { jsonrepair } = require('jsonrepair');
 const connectDB = require('./db');
@@ -73,6 +74,21 @@ const COMMON_DISHES = [
   'Fish Curry', 'Chicken Curry', 'Tandoori Chicken', 'Korma', 'Dosa',
   'Idli', 'Naan', 'Raita',
 ];
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+const aiRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour window
+  max: 30,                   // 30 AI requests per hour per user
+  keyGenerator: (req) => {
+    // Use authenticated userId when available, fall back to IP
+    return req.userId || req.ip;
+  },
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests. You can make up to 30 AI requests per hour.' });
+  },
+  skipSuccessfulRequests: false,
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -230,11 +246,31 @@ app.patch('/api/user/profile', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Macro validation helper ──────────────────────────────────────────────────
+
+function validateMacros(macros) {
+  if (!macros || typeof macros !== 'object') return 'Macros are required';
+  const { protein, carbs, fats, calories } = macros;
+  const fields = { protein, carbs, fats, calories };
+  for (const [key, val] of Object.entries(fields)) {
+    const n = Number(val);
+    if (val === '' || val === null || val === undefined || isNaN(n)) return `${key} must be a number`;
+    if (n < 0) return `${key} cannot be negative`;
+  }
+  if (Number(protein) > 500)   return 'Protein seems too high (max 500g)';
+  if (Number(carbs) > 1500)    return 'Carbs seems too high (max 1500g)';
+  if (Number(fats) > 500)      return 'Fat seems too high (max 500g)';
+  if (Number(calories) > 6000) return 'Calories seems too high (max 6000)';
+  return null;
+}
+
 // ─── Meal suggestion routes (public) ─────────────────────────────────────────
 
-app.post('/api/suggest-meals', async (req, res) => {
+app.post('/api/suggest-meals', authMiddleware, aiRateLimit, async (req, res) => {
   try {
     const { macros, preferences, mealType = 'any meal' } = req.body;
+    const macroError = validateMacros(macros);
+    if (macroError) return res.status(400).json({ error: macroError });
     const p = Number(macros.protein), c = Number(macros.carbs), f = Number(macros.fats);
     let macroPriority = '';
     if (p > c && p > f) macroPriority = 'Focus on high protein, low ' + (c < f ? 'carbs' : 'fats') + ' meals.';
@@ -297,9 +333,11 @@ app.post('/api/suggest-meals', async (req, res) => {
   }
 });
 
-app.post('/api/fastfood-alternatives', async (req, res) => {
+app.post('/api/fastfood-alternatives', authMiddleware, aiRateLimit, async (req, res) => {
   try {
     const { chain, macros, excludeItems = [] } = req.body;
+    const macroError = validateMacros(macros);
+    if (macroError) return res.status(400).json({ error: macroError });
     const randomSeed = Math.floor(Math.random() * 1000000);
     const excludeLine = excludeItems.length
       ? `Do NOT suggest any of these items (already shown): ${excludeItems.join(', ')}.`
@@ -376,9 +414,13 @@ app.delete('/api/favorites/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/favorites/suggest', authMiddleware, async (req, res) => {
+app.post('/api/favorites/suggest', authMiddleware, aiRateLimit, async (req, res) => {
   try {
     const { macros, preferences } = req.body;
+    if (macros) {
+      const macroError = validateMacros(macros);
+      if (macroError) return res.status(400).json({ error: macroError });
+    }
     const favoriteMeals = await Favorite.find({ userId: req.userId });
 
     if (favoriteMeals.length === 0) {

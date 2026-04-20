@@ -1,6 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FaArrowRight, FaRedo, FaSearch } from 'react-icons/fa';
 import FastFoodCard from '../components/FastFoodCard';
+
+const FF_HINTS = [
+  'Scanning the menu…',
+  'Matching your macros…',
+  'Checking nutrition facts…',
+  'Finding the best options…',
+  'Almost there…',
+];
+
+function useRotatingHint(active) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const t = setInterval(() => setIdx(i => (i + 1) % FF_HINTS.length), 2200);
+    return () => clearInterval(t);
+  }, [active]);
+  return FF_HINTS[idx];
+}
 
 const MACRO_FIELDS = [
   { name: 'protein',  label: 'Protein',  unit: 'g',    color: '#8b5cf6' },
@@ -33,6 +51,7 @@ export default function FastFoodPage({
   onInputChange, onSubmit, isFavorite, onSave, onRemove, FAST_FOOD_CHAINS,
 }) {
   const [search, setSearch] = useState('');
+  const loadingHint = useRotatingHint(ffLoading);
 
   const filtered = FAST_FOOD_CHAINS.filter(c =>
     c.toLowerCase().includes(search.toLowerCase())
@@ -155,7 +174,7 @@ export default function FastFoodPage({
           <div className="mt-10 flex flex-col gap-3">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-              <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 dark:text-slate-600 uppercase">Scanning menu…</p>
+              <p key={loadingHint} className="text-[10px] font-bold tracking-[0.18em] text-gray-400 dark:text-slate-600 uppercase animate-fade-in">{loadingHint}</p>
             </div>
             {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
           </div>

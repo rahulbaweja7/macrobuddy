@@ -387,7 +387,21 @@ export default function OnboardingPage() {
             >
               <FaArrowLeft size={11} /> Back
             </button>
-          ) : <div />}
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  const res = await api.patch('/api/user/profile', { goal: null, sex: null, age: null, heightCm: null, weightKg: null, activity: null, macros: {} });
+                  updateUser(res.data.user);
+                } catch { setSaving(false); }
+              }}
+              className="text-xs font-medium text-gray-400 dark:text-slate-600 hover:text-gray-600 dark:hover:text-slate-400 transition"
+            >
+              Skip for now
+            </button>
+          )}
 
           {step < 2 ? (
             <button

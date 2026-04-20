@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FaArrowRight, FaRedo, FaStar } from 'react-icons/fa';
+import { useState, useMemo } from 'react';
+import { FaArrowRight, FaRedo, FaStar, FaSearch, FaTimes } from 'react-icons/fa';
 import MealCard from '../components/MealCard';
 
 const MACRO_FIELDS = [
@@ -37,6 +37,16 @@ export default function FavoritesPage({
   setExpandedFavoriteSuggestionIndex, onSave,
 }) {
   const [showSuggestForm, setShowSuggestForm] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredFavorites = useMemo(() => {
+    if (!search.trim()) return favorites;
+    const q = search.toLowerCase();
+    return favorites.filter(f =>
+      (f.meal || '').toLowerCase().includes(q) ||
+      (f.description || '').toLowerCase().includes(q)
+    );
+  }, [favorites, search]);
 
   return (
     <div className="flex-1 bg-white dark:bg-[#080810] min-h-screen">
@@ -198,8 +208,37 @@ export default function FavoritesPage({
                 <FaRedo size={10} /> Refresh
               </button>
             </div>
+
+            {/* Search */}
+            {favorites.length >= 5 && (
+              <div className="relative mb-4">
+                <FaSearch size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 pointer-events-none" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search favorites…"
+                  className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white text-sm placeholder-gray-300 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition"
+                  >
+                    <FaTimes size={11} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {filteredFavorites.length === 0 && search ? (
+              <div className="text-center py-10">
+                <p className="text-sm text-gray-400 dark:text-slate-500">No meals match "<span className="font-semibold">{search}</span>"</p>
+                <button onClick={() => setSearch('')} className="mt-2 text-xs font-bold text-indigo-500 hover:text-indigo-700 transition">Clear search</button>
+              </div>
+            ) : (
             <div className="flex flex-col gap-3">
-              {favorites.map((fav, i) => (
+              {filteredFavorites.map((fav, i) => (
                 <div key={fav.id} className="animate-slide-up" style={{ animationDelay: `${i * 50}ms` }}>
                   <MealCard
                     meal={fav}
@@ -213,6 +252,7 @@ export default function FavoritesPage({
                 </div>
               ))}
             </div>
+            )}
           </div>
         )}
 

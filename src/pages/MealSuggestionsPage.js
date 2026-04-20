@@ -1,5 +1,24 @@
+import { useState, useEffect } from 'react';
 import { FaArrowRight, FaRedo, FaBolt, FaChevronRight } from 'react-icons/fa';
 import MealCard from '../components/MealCard';
+
+const AI_HINTS = [
+  'Analyzing your macro targets…',
+  'Crafting personalized recipes…',
+  'Calculating nutrition profiles…',
+  'Finding the perfect match…',
+  'Almost ready…',
+];
+
+function useRotatingHint(active) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const t = setInterval(() => setIdx(i => (i + 1) % AI_HINTS.length), 2200);
+    return () => clearInterval(t);
+  }, [active]);
+  return AI_HINTS[idx];
+}
 
 const CUISINES = [
   { name: 'Any',           emoji: '🌍' },
@@ -131,6 +150,7 @@ export default function MealSuggestionsPage({
   const currentIdx = MEAL_TYPE_ORDER.indexOf(mealType);
   const nextMealType = MEAL_TYPE_ORDER[(currentIdx + 1) % MEAL_TYPE_ORDER.length];
   const filledCount = dayPlan ? Object.values(dayPlan).filter(Boolean).length : 0;
+  const loadingHint = useRotatingHint(loading);
 
   return (
     <div className="flex-1 bg-white dark:bg-[#080810] min-h-screen">
@@ -300,7 +320,7 @@ export default function MealSuggestionsPage({
           <div className="mt-10 flex flex-col gap-3">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-              <p className="text-[10px] font-bold tracking-[0.18em] text-gray-400 dark:text-slate-600 uppercase">AI is thinking…</p>
+              <p key={loadingHint} className="text-[10px] font-bold tracking-[0.18em] text-gray-400 dark:text-slate-600 uppercase animate-fade-in">{loadingHint}</p>
             </div>
             {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
           </div>

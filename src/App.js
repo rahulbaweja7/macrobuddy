@@ -220,6 +220,18 @@ function AppContent() {
     if (page === 'favorites' && user) loadFavorites();
   }, [page, user]);
 
+  // Keep macro form in sync when profile is saved (onboarding or profile page)
+  useEffect(() => {
+    const m = user?.profile?.macros;
+    if (!m) return;
+    setMacros({
+      protein:  m.protein  != null ? String(m.protein)  : '',
+      carbs:    m.carbs    != null ? String(m.carbs)    : '',
+      fats:     m.fats     != null ? String(m.fats)     : '',
+      calories: m.calories != null ? String(m.calories) : '',
+    });
+  }, [user?.profile?.macros]);
+
   // ── Auth gate ─────────────────────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-screen bg-[#080810] flex items-center justify-center">
