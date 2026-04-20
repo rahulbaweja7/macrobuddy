@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { key: 'fastfood',  label: 'Fast Food' },
   { key: 'favorites', label: 'Favorites' },
   { key: 'mealplan',  label: 'Meal Plan' },
+  { key: 'profile',   label: 'Profile', mobileOnly: true },
 ];
 
 export default function Navbar({ page, setPage, user, logout, dayPlanCount }) {
@@ -23,7 +24,7 @@ export default function Navbar({ page, setPage, user, logout, dayPlanCount }) {
     <>
       {/* Desktop nav links */}
       <nav className="hidden md:flex items-center gap-1">
-        {NAV_ITEMS.map(({ key, label }) => (
+        {NAV_ITEMS.filter(i => !i.mobileOnly).map(({ key, label }) => (
           <button
             key={key}
             onClick={() => navigate(key)}

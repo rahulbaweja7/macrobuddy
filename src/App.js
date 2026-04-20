@@ -13,6 +13,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
+import ProfilePage from './pages/ProfilePage';
 
 const FAST_FOOD_CHAINS = [
   "McDonald's", 'Burger King', "Wendy's", 'Taco Bell', 'KFC', 'Subway',
@@ -44,6 +45,7 @@ function AppContent() {
     fastfood:  'Fast Food Finder — MacroBuddy',
     favorites: 'Favorites — MacroBuddy',
     mealplan:  'Meal Plan — MacroBuddy',
+    profile:   'Profile — MacroBuddy',
   };
 
   useEffect(() => {
@@ -252,7 +254,12 @@ function AppContent() {
             <Navbar page={page} setPage={setPage} user={user} logout={logout} dayPlanCount={Object.values(dayPlan).filter(Boolean).length} />
             {/* Desktop user + sign out — hidden on mobile (in hamburger instead) */}
             <div className="hidden md:flex items-center gap-3 border-l pl-4 border-gray-200 dark:border-white/10">
-              <span className="text-sm text-gray-600 dark:text-slate-400 font-medium">{user.name}</span>
+              <button
+                onClick={() => setPage('profile')}
+                className="text-sm text-gray-600 dark:text-slate-400 font-medium hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+              >
+                {user.name}
+              </button>
               <button
                 onClick={logout}
                 className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-white/10 font-medium transition"
@@ -336,6 +343,9 @@ function AppContent() {
           onClearSuggested={() => setDayPlan({ Breakfast: null, Lunch: null, Dinner: null, Snack: null })}
           setPage={setPage}
         />
+      )}
+      {page === 'profile' && (
+        <ProfilePage setPage={setPage} setAppMacros={setMacros} />
       )}
       </div>
     </div>
