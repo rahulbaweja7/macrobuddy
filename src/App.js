@@ -12,6 +12,7 @@ import MealPlanPage from './pages/MealPlanPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import OnboardingPage from './pages/OnboardingPage';
 
 const FAST_FOOD_CHAINS = [
   "McDonald's", 'Burger King', "Wendy's", 'Taco Bell', 'KFC', 'Subway',
@@ -50,8 +51,14 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [page]);
 
-  // Meal suggestions state
-  const [macros, setMacros] = useState({ protein: '', carbs: '', fats: '', calories: '' });
+  // Meal suggestions state — pre-fill from saved profile if available
+  const savedMacros = user?.profile?.macros;
+  const [macros, setMacros] = useState({
+    protein:  savedMacros?.protein  ?? '',
+    carbs:    savedMacros?.carbs    ?? '',
+    fats:     savedMacros?.fats     ?? '',
+    calories: savedMacros?.calories ?? '',
+  });
   const [suggestions, setSuggestions] = useState([]);
   const [loading2, setLoading2] = useState(false);
   const [error, setError] = useState('');
@@ -225,6 +232,10 @@ function AppContent() {
     return authPage === 'login'
       ? <LoginPage onSwitchToRegister={() => setAuthPage('register')} />
       : <RegisterPage onSwitchToLogin={() => setAuthPage('login')} />;
+  }
+
+  if (!user.onboarded) {
+    return <OnboardingPage />;
   }
 
   // ── Main app ──────────────────────────────────────────────────────────────

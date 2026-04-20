@@ -76,6 +76,16 @@ const COMMON_DISHES = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function serializeUser(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    onboarded: user.onboarded || false,
+    profile: user.profile || null,
+  };
+}
+
 function safeJsonParse(content) {
   try {
     return JSON.parse(content);
@@ -154,7 +164,7 @@ app.post('/api/auth/register', async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({ name, email, password: hashed });
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.status(201).json({ token, user: serializeUser(user) });
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Registration failed' });
@@ -172,7 +182,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ token, user: serializeUser(user) });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
@@ -189,11 +199,7 @@ app.get('/api/auth/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: `${process.env.CLIENT_URL || 'http://localhost:3000'}?auth_error=true` }),
   (req, res) => {
     const token = jwt.sign({ userId: req.user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    const user = encodeURIComponent(JSON.stringify({
-      id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-    }));
+    const user = encodeURIComponent(JSON.stringify(serializeUser(req.user)));
     res.redirect(`${process.env.CLIENT_URL || 'http://localhost:3000'}?token=${token}&user=${user}`);
   }
 );
@@ -202,9 +208,25 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ user: serializeUser(user) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+app.patch('/api/user/profile', authMiddleware, async (req, res) => {
+  try {
+    const { goal, sex, age, heightCm, weightKg, activity, macros } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $set: { onboarded: true, profile: { goal, sex, age, heightCm, weightKg, activity, macros } } },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: serializeUser(user) });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ error: 'Failed to save profile' });
   }
 });
 

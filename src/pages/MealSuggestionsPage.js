@@ -1,4 +1,4 @@
-import { FaArrowRight, FaRedo, FaBookmark, FaBolt, FaChevronRight } from 'react-icons/fa';
+import { FaArrowRight, FaRedo, FaBolt, FaChevronRight } from 'react-icons/fa';
 import MealCard from '../components/MealCard';
 
 const CUISINES = [

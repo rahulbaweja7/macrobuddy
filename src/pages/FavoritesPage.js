@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FaBookmark, FaArrowRight, FaRedo, FaStar } from 'react-icons/fa';
+import { FaArrowRight, FaRedo, FaStar } from 'react-icons/fa';
 import MealCard from '../components/MealCard';
 
 const MACRO_FIELDS = [
