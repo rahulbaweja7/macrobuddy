@@ -78,16 +78,13 @@ const COMMON_DISHES = [
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 
 const aiRateLimit = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour window
-  max: 30,                   // 30 AI requests per hour per user
-  keyGenerator: (req) => {
-    // Use authenticated userId when available, fall back to IP
-    return req.userId || req.ip;
-  },
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => req.userId || req.ip,
+  validate: { xForwardedForHeader: false },
   handler: (req, res) => {
     res.status(429).json({ error: 'Too many requests. You can make up to 30 AI requests per hour.' });
   },
-  skipSuccessfulRequests: false,
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
