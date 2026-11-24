@@ -30,7 +30,21 @@ export function AuthProvider({ children }) {
     try {
       const token = localStorage.getItem('token');
       const stored = localStorage.getItem('user');
-      if (token && stored) setUser(JSON.parse(stored));
+      if (token && stored) {
+        setUser(JSON.parse(stored));
+        // Confirm the saved session is still valid (expired token, deleted account,
+        // different database). Only a definite rejection signs the user out;
+        // a network error keeps the saved session.
+        api.get('/api/auth/me')
+          .then((res) => persist(token, res.data.user))
+          .catch((err) => {
+            if (err.response && [401, 404].includes(err.response.status)) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+              setUser(null);
+            }
+          });
+      }
     } catch {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
