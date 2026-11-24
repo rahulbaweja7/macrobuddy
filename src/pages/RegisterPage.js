@@ -13,7 +13,7 @@ const GoogleIcon = () => (
 );
 
 const PW_CHECKS = [
-  { label: 'At least 6 characters', test: v => v.length >= 6 },
+  { label: 'At least 8 characters', test: v => v.length >= 8 },
   { label: 'Contains a number',     test: v => /\d/.test(v) },
 ];
 
@@ -33,7 +33,7 @@ export default function RegisterPage({ onSwitchToLogin }) {
     if (!email)                             e.email    = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(email))  e.email    = 'Enter a valid email';
     if (!password)                          e.password = 'Password is required';
-    else if (password.length < 6)          e.password = 'At least 6 characters required';
+    else if (password.length < 8)          e.password = 'At least 8 characters required';
     return e;
   };
 
