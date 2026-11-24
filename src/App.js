@@ -34,19 +34,19 @@ const CUISINES = [
   'Vietnamese', 'Spanish', 'African',
 ];
 
+const PAGE_TITLES = {
+  landing:   'MacroBuddy',
+  main:      'Meal Suggestions — MacroBuddy',
+  fastfood:  'Fast Food Finder — MacroBuddy',
+  favorites: 'Favorites — MacroBuddy',
+  mealplan:  'Meal Plan — MacroBuddy',
+  profile:   'Profile — MacroBuddy',
+};
+
 function AppContent() {
   const { user, loading, logout } = useAuth();
   const [authPage, setAuthPage] = useState('login');
   const [page, setPage] = useState('landing');
-
-  const PAGE_TITLES = {
-    landing:   'MacroBuddy',
-    main:      'Meal Suggestions — MacroBuddy',
-    fastfood:  'Fast Food Finder — MacroBuddy',
-    favorites: 'Favorites — MacroBuddy',
-    mealplan:  'Meal Plan — MacroBuddy',
-    profile:   'Profile — MacroBuddy',
-  };
 
   useEffect(() => {
     document.title = PAGE_TITLES[page] || 'MacroBuddy';
@@ -213,7 +213,7 @@ function AppContent() {
   // Redirect logged-in users away from marketing landing to app
   useEffect(() => {
     if (user && page === 'landing') setPage('main');
-  }, [user]);
+  }, [user, page]);
 
   // Auto-load favorites when navigating to the favorites page
   useEffect(() => {
