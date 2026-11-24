@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const OpenAI = require('openai');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { jsonrepair } = require('jsonrepair');
 const authMiddleware = require('./middleware/auth');
@@ -78,8 +78,8 @@ const COMMON_DISHES = [
 const aiRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
-  keyGenerator: (req) => req.userId || req.ip,
-  validate: { xForwardedForHeader: false, ip: false },
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req.ip),
+  validate: { xForwardedForHeader: false },
   handler: (req, res) => {
     res.status(429).json({ error: 'Too many requests. You can make up to 30 AI requests per hour.' });
   },
