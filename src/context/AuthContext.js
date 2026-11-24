@@ -8,26 +8,32 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Handle redirect back from Google OAuth — token arrives as a URL query param
-    const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('token');
-    const urlUser = params.get('user');
+    const persist = (token, u) => {
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(u));
+      setUser(u);
+    };
 
-    if (urlToken && urlUser) {
-      const parsed = JSON.parse(decodeURIComponent(urlUser));
-      localStorage.setItem('token', urlToken);
-      localStorage.setItem('user', JSON.stringify(parsed));
-      setUser(parsed);
-      // Clean the token out of the URL so it's not visible / shareable
+    // Google OAuth redirect: the URL carries a short-lived one-time code (never the JWT)
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      // Remove the code from the URL straight away so it isn't visible / shareable
       window.history.replaceState({}, '', window.location.pathname);
-      setLoading(false);
+      api.post('/api/auth/google/exchange', { code })
+        .then((res) => persist(res.data.token, res.data.user))
+        .catch(() => {})
+        .finally(() => setLoading(false));
       return;
     }
 
-    const token = localStorage.getItem('token');
-    const stored = localStorage.getItem('user');
-    if (token && stored) {
-      setUser(JSON.parse(stored));
+    try {
+      const token = localStorage.getItem('token');
+      const stored = localStorage.getItem('user');
+      if (token && stored) setUser(JSON.parse(stored));
+    } catch {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
     }
     setLoading(false);
   }, []);
