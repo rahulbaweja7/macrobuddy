@@ -24,7 +24,14 @@ export default function LoginPage({ onSwitchToRegister }) {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [errors, setErrors]     = useState({});
-  const [apiError, setApiError] = useState('');
+  const [apiError, setApiError] = useState(() => {
+    // Server redirects here with ?auth_error=true when Google sign-in fails
+    if (new URLSearchParams(window.location.search).get('auth_error')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      return 'Google sign-in failed. Please try again or use email and password.';
+    }
+    return '';
+  });
   const [loading, setLoading]   = useState(false);
 
   const validate = () => {
