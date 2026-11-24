@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FaCheckCircle, FaTimesCircle, FaTimes } from 'react-icons/fa';
+import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 
 export default function Notification({ show, message, type }) {
   const [visible, setVisible] = useState(false);
@@ -14,6 +14,7 @@ export default function Notification({ show, message, type }) {
       const t = setTimeout(() => setVisible(false), 180);
       return () => clearTimeout(t);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to `show`; `visible` is read, not a trigger
   }, [show]);
 
   if (!visible) return null;

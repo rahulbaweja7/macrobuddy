@@ -14,19 +14,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
 import ProfilePage from './pages/ProfilePage';
-
-const FAST_FOOD_CHAINS = [
-  "McDonald's", 'Burger King', "Wendy's", 'Taco Bell', 'KFC', 'Subway',
-  'Chipotle', 'Panda Express', 'Chick-fil-A', 'Sonic', 'Jack in the Box',
-  'Popeyes', "Arby's", 'Dairy Queen', 'Five Guys', "Culver's",
-  'In-N-Out Burger', 'Shake Shack', 'Panera Bread', "Jimmy John's",
-  'Little Caesars', "Domino's", 'Pizza Hut', "Papa John's", "Raising Cane's",
-  "Jersey Mike's", 'El Pollo Loco', 'Qdoba', 'Del Taco', "Carl's Jr.",
-  "Hardee's", 'Checkers', "Church's Chicken", 'Wingstop', 'Bojangles',
-  'White Castle', "Zaxby's", 'Boston Market', 'A&W', 'Blaze Pizza',
-  'Firehouse Subs', "Freddy's", 'Krystal', "Moe's Southwest Grill",
-  'Noodles & Company', "Schlotzsky's", 'Steak & Shake', 'Whataburger',
-];
+import { FAST_FOOD_CHAINS } from './data/fastFoodChains';
 
 const CUISINES = [
   'Any', 'American', 'Italian', 'Mexican', 'Indian', 'Chinese', 'Japanese',
@@ -34,19 +22,19 @@ const CUISINES = [
   'Vietnamese', 'Spanish', 'African',
 ];
 
+const PAGE_TITLES = {
+  landing:   'MacroBuddy',
+  main:      'Meal Suggestions — MacroBuddy',
+  fastfood:  'Fast Food Finder — MacroBuddy',
+  favorites: 'Favorites — MacroBuddy',
+  mealplan:  'Meal Plan — MacroBuddy',
+  profile:   'Profile — MacroBuddy',
+};
+
 function AppContent() {
   const { user, loading, logout } = useAuth();
-  const [authPage, setAuthPage] = useState('login');
+  const [authPage, setAuthPage] = useState(null); // null = landing | 'login' | 'register'
   const [page, setPage] = useState('landing');
-
-  const PAGE_TITLES = {
-    landing:   'MacroBuddy',
-    main:      'Meal Suggestions — MacroBuddy',
-    fastfood:  'Fast Food Finder — MacroBuddy',
-    favorites: 'Favorites — MacroBuddy',
-    mealplan:  'Meal Plan — MacroBuddy',
-    profile:   'Profile — MacroBuddy',
-  };
 
   useEffect(() => {
     document.title = PAGE_TITLES[page] || 'MacroBuddy';
@@ -210,9 +198,9 @@ function AppContent() {
     }
   };
 
-  // Redirect logged-in users away from marketing landing to app
+  // Signing out (or arriving signed out) always returns to the landing page
   useEffect(() => {
-    if (user && page === 'landing') setPage('main');
+    if (!user) setAuthPage(null);
   }, [user]);
 
   // Auto-load favorites when navigating to the favorites page
@@ -243,9 +231,17 @@ function AppContent() {
   );
 
   if (!user) {
-    return authPage === 'login'
-      ? <LoginPage onSwitchToRegister={() => setAuthPage('register')} />
-      : <RegisterPage onSwitchToLogin={() => setAuthPage('login')} />;
+    if (authPage === 'login') {
+      return <LoginPage onSwitchToRegister={() => setAuthPage('register')} onBack={() => setAuthPage(null)} />;
+    }
+    if (authPage === 'register') {
+      return <RegisterPage onSwitchToLogin={() => setAuthPage('login')} onBack={() => setAuthPage(null)} />;
+    }
+    return (
+      <div className="min-h-screen flex flex-col">
+        <HomePage user={null} onSignIn={() => setAuthPage('login')} onGetStarted={() => setAuthPage('register')} />
+      </div>
+    );
   }
 
   if (!user.onboarded) {
@@ -284,7 +280,7 @@ function AppContent() {
       </header>
 
       <div key={page} className="animate-page-in flex-1 flex flex-col min-h-0">
-      {page === 'landing' && <HomePage setPage={setPage} />}
+      {page === 'landing' && <HomePage user={user} setPage={setPage} />}
       {page === 'main' && (
         <MealSuggestionsPage
           macros={macros}

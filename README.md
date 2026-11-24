@@ -1,70 +1,71 @@
-# Getting Started with Create React App
+# MacroBuddy
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+AI-powered meal suggestions that hit your macro targets. Set your protein, carbs, fat and calories (or let onboarding calculate them from your stats) and MacroBuddy suggests meals, finds fast-food alternatives, saves favorites and plans your day.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- **Onboarding + profile** – goal, stats and activity level produce daily macro targets (Mifflin-St Jeor); editable any time
+- **Meal suggestions** – recipes with ingredient-level macros, filterable by cuisine and meal type
+- **Fast food finder** – closest menu matches to your macros across 45+ chains
+- **Favorites** and a **daily meal plan** (breakfast / lunch / dinner per date)
+- Email/password and Google sign-in, dark/light mode, account deletion
 
-### `npm start`
+## Stack
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+React 19 (Create React App) + Tailwind · Express · MongoDB (Mongoose) · Groq (Llama 3.3 70B, via the OpenAI SDK)
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Getting started
 
-### `npm test`
+Requires Node 20+ and a MongoDB instance (or use Docker below).
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+npm install
+cp server/.env.example server/.env   # then fill in the values
+npm run dev                          # API on :3001, app on :3000
+```
 
-### `npm run build`
+Or with Docker (starts MongoDB too): `docker compose up --build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Environment variables
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Server (`server/.env`):
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+| Variable | Required | Description |
+| --- | --- | --- |
+| `MONGODB_URI` | yes | MongoDB connection string |
+| `JWT_SECRET` | yes | Secret used to sign login tokens |
+| `GROQ_API_KEY` | yes (for AI) | Free key from [console.groq.com](https://console.groq.com) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | Enables Google sign-in. Authorized redirect URI: `<server>/api/auth/google/callback` |
+| `CLIENT_URL` | no | Frontend origin for CORS and OAuth redirects (default `http://localhost:3000`) |
+| `PORT` | no | API port (default `3001`) |
 
-### `npm run eject`
+Client (build-time): `REACT_APP_API_URL` – API base URL (default `http://localhost:3001`).
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Scripts
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | API and React dev server together |
+| `npm run server` | API only |
+| `npm start` / `npm run build` | React dev server / production build |
+| `npm test` | Client tests (Jest + Testing Library) |
+| `npm run test:server` | API tests (node:test + supertest, in-memory MongoDB; first run downloads a MongoDB binary) |
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## API overview
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+All routes except `/api/auth/*` and `/api/health` need `Authorization: Bearer <token>`.
 
-## Learn More
+| Route | Purpose |
+| --- | --- |
+| `POST /api/auth/register`, `/login` | Email/password auth |
+| `GET /api/auth/google`, `POST /api/auth/google/exchange` | Google OAuth (callback redirects with a one-time code, never the token) |
+| `GET /api/auth/me` | Current user |
+| `PATCH /api/user/profile`, `DELETE /api/user` | Update profile / delete account and data |
+| `POST /api/suggest-meals`, `/api/fastfood-alternatives`, `/api/favorites/suggest` | AI endpoints (30 requests/hour/user) |
+| `GET/POST /api/favorites`, `DELETE /api/favorites/:id` | Favorites |
+| `GET/POST /api/mealplan`, `DELETE /api/mealplan/:date/:slot` | Meal plan |
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Notes
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- Macros come from an LLM and are estimates, not lab-verified nutrition data.
+- Not yet implemented: password reset and email verification (need an email provider), and food logging / daily progress tracking.

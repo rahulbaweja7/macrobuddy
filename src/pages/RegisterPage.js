@@ -13,11 +13,11 @@ const GoogleIcon = () => (
 );
 
 const PW_CHECKS = [
-  { label: 'At least 6 characters', test: v => v.length >= 6 },
+  { label: 'At least 8 characters', test: v => v.length >= 8 },
   { label: 'Contains a number',     test: v => /\d/.test(v) },
 ];
 
-export default function RegisterPage({ onSwitchToLogin }) {
+export default function RegisterPage({ onSwitchToLogin, onBack }) {
   const { register } = useAuth();
   const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
@@ -33,7 +33,7 @@ export default function RegisterPage({ onSwitchToLogin }) {
     if (!email)                             e.email    = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(email))  e.email    = 'Enter a valid email';
     if (!password)                          e.password = 'Password is required';
-    else if (password.length < 6)          e.password = 'At least 6 characters required';
+    else if (password.length < 8)          e.password = 'At least 8 characters required';
     return e;
   };
 
@@ -101,6 +101,11 @@ export default function RegisterPage({ onSwitchToLogin }) {
       {/* Right form panel */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white dark:bg-[#080810]">
         <div className="w-full max-w-sm">
+          {onBack && (
+            <button type="button" onClick={onBack} className="text-xs font-medium text-gray-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-slate-300 mb-6 transition">
+              ← Back to home
+            </button>
+          )}
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-sm">🥗</div>

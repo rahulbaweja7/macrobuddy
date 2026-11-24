@@ -1,0 +1,623 @@
+const express = require('express');
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const OpenAI = require('openai');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+const { jsonrepair } = require('jsonrepair');
+const authMiddleware = require('./middleware/auth');
+const User = require('./models/User');
+const Favorite = require('./models/Favorite');
+const MealPlan = require('./models/MealPlan');
+
+const app = express();
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
+app.use(express.json());
+app.use(passport.initialize());
+
+// ─── Google OAuth strategy ────────────────────────────────────────────────────
+const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
+if (googleEnabled) passport.use(new GoogleStrategy(
+  {
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: '/api/auth/google/callback',
+  },
+  async (accessToken, refreshToken, profile, done) => {
+    try {
+      const email = profile.emails[0].value;
+
+      // Find by googleId first, then fall back to email (link accounts)
+      let user = await User.findOne({ googleId: profile.id });
+      if (!user) {
+        user = await User.findOne({ email });
+        if (user) {
+          user.googleId = profile.id;
+          await user.save();
+        } else {
+          user = await User.create({
+            name: profile.displayName,
+            email,
+            googleId: profile.id,
+          });
+        }
+      }
+      done(null, user);
+    } catch (err) {
+      done(err);
+    }
+  }
+));
+
+const openai = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY || 'unset', // SDK throws at construction if empty; real calls fail with 401
+  baseURL: 'https://api.groq.com/openai/v1',
+});
+
+const CUISINES = [
+  'Any', 'American', 'Italian', 'Mexican', 'Indian', 'Chinese', 'Japanese',
+  'Thai', 'Mediterranean', 'French', 'Greek', 'Middle Eastern', 'Korean',
+  'Vietnamese', 'Spanish', 'African',
+];
+
+const COMMON_DISHES = [
+  'Chicken Tikka Masala', 'Chana Masala', 'Tandoori Salmon', 'Paneer Tikka',
+  'Butter Chicken', 'Dal Makhani', 'Palak Paneer', 'Rogan Josh', 'Biryani',
+  'Aloo Gobi', 'Samosa', 'Lamb Vindaloo', 'Saag Paneer', 'Malai Kofta',
+  'Fish Curry', 'Chicken Curry', 'Tandoori Chicken', 'Korma', 'Dosa',
+  'Idli', 'Naan', 'Raita',
+];
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+const aiRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req.ip),
+  validate: { xForwardedForHeader: false },
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests. You can make up to 30 AI requests per hour.' });
+  },
+});
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function serializeUser(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    onboarded: user.onboarded || false,
+    profile: user.profile || null,
+  };
+}
+
+function safeJsonParse(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    try {
+      return JSON.parse(jsonrepair(content));
+    } catch {
+      const mdMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      if (mdMatch) {
+        try { return JSON.parse(mdMatch[1]); } catch {}
+      }
+      const arrMatch = content.match(/\[[\s\S]*\]/);
+      if (arrMatch) {
+        try { return JSON.parse(arrMatch[0]); } catch {}
+      }
+      const objMatch = content.match(/\{[\s\S]*\}/);
+      if (objMatch) {
+        try { return JSON.parse(objMatch[0]); } catch {}
+      }
+      throw new Error('Unable to parse JSON from OpenAI response');
+    }
+  }
+}
+
+function normalizeSuggestions(raw) {
+  const toArray = (val) => {
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') {
+      if (Array.isArray(val.suggestions)) return val.suggestions;
+      if (Array.isArray(val.meals)) return val.meals;
+      if (Array.isArray(val.items)) return val.items;
+    }
+    return [];
+  };
+
+  return toArray(raw).map((item) => {
+    const macros = item.macros || {
+      protein: Number(item.protein || 0),
+      carbs: Number(item.carbs || 0),
+      fats: Number(item.fats || 0),
+      calories: Number(item.calories || 0),
+    };
+    const instructions = Array.isArray(item.instructions)
+      ? item.instructions
+      : typeof item.instructions === 'string'
+        ? item.instructions.split(/\r?\n|\.|\u2022|-/).map(s => s.trim()).filter(Boolean)
+        : [];
+    return {
+      meal: item.meal || item.name || item.title || 'Untitled Meal',
+      description: item.description || item.desc || '',
+      macros,
+      difference: item.difference || item.delta || undefined,
+      ingredients: Array.isArray(item.ingredients)
+        ? item.ingredients
+        : Array.isArray(item.recipe?.ingredients)
+          ? item.recipe.ingredients
+          : [],
+      instructions,
+      customization: item.customization,
+    };
+  }).filter(Boolean);
+}
+
+// ─── Auth routes ─────────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const signToken = (userId) => jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    if (typeof name !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Invalid input' });
+    }
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ name: name.trim(), email, password: hashed });
+    res.status(201).json({ token: signToken(user._id), user: serializeUser(user) });
+  } catch (err) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { password } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (!email || !password || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    const user = await User.findOne({ email });
+    // Google-only accounts have no password hash — treat as invalid credentials
+    if (!user || !user.password || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    res.json({ token: signToken(user._id), user: serializeUser(user) });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// ─── Google OAuth routes ──────────────────────────────────────────────────────
+
+// The callback never puts the JWT in the URL. It redirects with a short-lived,
+// single-use code that the client exchanges for the real token via POST.
+const OAUTH_CODE_TTL_MS = 60 * 1000;
+const oauthCodes = new Map(); // code -> { userId, expires }
+
+function issueOAuthCode(userId) {
+  const now = Date.now();
+  for (const [code, entry] of oauthCodes) if (entry.expires < now) oauthCodes.delete(code);
+  const code = crypto.randomBytes(32).toString('hex');
+  oauthCodes.set(code, { userId, expires: now + OAUTH_CODE_TTL_MS });
+  return code;
+}
+
+const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:3000';
+
+app.get('/api/auth/google', (req, res, next) => {
+  if (!googleEnabled) return res.status(503).json({ error: 'Google sign-in is not configured' });
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next);
+});
+
+app.get('/api/auth/google/callback',
+  (req, res, next) => {
+    if (!googleEnabled) return res.redirect(`${clientUrl()}?auth_error=true`);
+    passport.authenticate('google', { session: false, failureRedirect: `${clientUrl()}?auth_error=true` })(req, res, next);
+  },
+  (req, res) => {
+    res.redirect(`${clientUrl()}?code=${issueOAuthCode(String(req.user._id))}`);
+  }
+);
+
+app.post('/api/auth/google/exchange', async (req, res) => {
+  try {
+    const { code } = req.body;
+    const entry = typeof code === 'string' ? oauthCodes.get(code) : null;
+    if (entry) oauthCodes.delete(code); // single use
+    if (!entry || entry.expires < Date.now()) {
+      return res.status(400).json({ error: 'Invalid or expired sign-in code' });
+    }
+    const user = await User.findById(entry.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ token: signToken(user._id), user: serializeUser(user) });
+  } catch (err) {
+    console.error('OAuth exchange error:', err);
+    res.status(500).json({ error: 'Sign-in failed' });
+  }
+});
+
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: serializeUser(user) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+const GOALS = ['lose', 'maintain', 'build'];
+const SEXES = ['male', 'female'];
+const ACTIVITIES = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
+
+function validateProfile({ goal, sex, age, heightCm, weightKg, activity, macros }) {
+  if (!GOALS.includes(goal)) return 'Invalid goal';
+  if (!SEXES.includes(sex)) return 'Invalid sex';
+  if (!ACTIVITIES.includes(activity)) return 'Invalid activity level';
+  const inRange = (v, min, max) => Number.isFinite(Number(v)) && v !== '' && v !== null && Number(v) >= min && Number(v) <= max;
+  if (!inRange(age, 13, 120)) return 'Age must be between 13 and 120';
+  if (!inRange(heightCm, 80, 260)) return 'Height must be between 80 and 260 cm';
+  if (!inRange(weightKg, 25, 400)) return 'Weight must be between 25 and 400 kg';
+  return validateMacros(macros);
+}
+
+app.patch('/api/user/profile', authMiddleware, async (req, res) => {
+  try {
+    if (req.body.skip === true) {
+      // User skipped onboarding — mark done without touching profile data
+      const user = await User.findByIdAndUpdate(req.userId, { $set: { onboarded: true } }, { new: true });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      return res.json({ user: serializeUser(user) });
+    }
+    const profileError = validateProfile(req.body);
+    if (profileError) return res.status(400).json({ error: profileError });
+    const { goal, sex, age, heightCm, weightKg, activity, macros } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $set: { onboarded: true, profile: {
+        goal, sex, activity,
+        age: Number(age), heightCm: Number(heightCm), weightKg: Number(weightKg),
+        macros: {
+          protein: Number(macros.protein), carbs: Number(macros.carbs),
+          fats: Number(macros.fats), calories: Number(macros.calories),
+        },
+      } } },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: serializeUser(user) });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ error: 'Failed to save profile' });
+  }
+});
+
+app.delete('/api/user', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await Promise.all([
+      Favorite.deleteMany({ userId: req.userId }),
+      MealPlan.deleteMany({ userId: req.userId }),
+    ]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Account deletion error:', err);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// ─── Macro validation helper ──────────────────────────────────────────────────
+
+function validateMacros(macros) {
+  if (!macros || typeof macros !== 'object') return 'Macros are required';
+  const { protein, carbs, fats, calories } = macros;
+  const fields = { protein, carbs, fats, calories };
+  for (const [key, val] of Object.entries(fields)) {
+    const n = Number(val);
+    if (val === '' || val === null || val === undefined || isNaN(n)) return `${key} must be a number`;
+    if (n < 0) return `${key} cannot be negative`;
+  }
+  if (Number(protein) > 500)   return 'Protein seems too high (max 500g)';
+  if (Number(carbs) > 1500)    return 'Carbs seems too high (max 1500g)';
+  if (Number(fats) > 500)      return 'Fat seems too high (max 500g)';
+  if (Number(calories) > 6000) return 'Calories seems too high (max 6000)';
+  return null;
+}
+
+// ─── Meal suggestion routes (public) ─────────────────────────────────────────
+
+app.post('/api/suggest-meals', authMiddleware, aiRateLimit, async (req, res) => {
+  try {
+    const { macros, preferences, mealType = 'any meal' } = req.body;
+    const macroError = validateMacros(macros);
+    if (macroError) return res.status(400).json({ error: macroError });
+    const p = Number(macros.protein), c = Number(macros.carbs), f = Number(macros.fats);
+    let macroPriority = '';
+    if (p > c && p > f) macroPriority = 'Focus on high protein, low ' + (c < f ? 'carbs' : 'fats') + ' meals.';
+    else if (c > p && c > f) macroPriority = 'Focus on high carb, low ' + (p < f ? 'protein' : 'fats') + ' meals.';
+    else if (f > p && f > c) macroPriority = 'Focus on high fat, low ' + (p < c ? 'protein' : 'carbs') + ' meals.';
+    else macroPriority = 'Balance all macros.';
+
+    const mealTypeContext = {
+      Breakfast: 'morning breakfast — think eggs, oats, smoothie bowls, toast variations, or quick prep foods appropriate to start the day',
+      Lunch:     'midday lunch — think salads, wraps, bowls, soups, or hearty sandwiches appropriate for midday energy',
+      Dinner:    'evening dinner — think warm, satisfying, cooked meals like stir-fries, roasted proteins, pasta, or curries',
+      Snack:     'between-meal snack — think small bites, protein bars alternatives, dips, fruit combos, or light options under ~300 calories',
+    };
+
+    const mealContext = mealTypeContext[mealType] || 'any meal';
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    const excludeList = COMMON_DISHES;
+
+    const buildPrompt = (strict) => `You are a nutritionist. Suggest 3 creative ${mealType} recipes that fit these macros per serving:
+    - Protein: ${macros.protein}g
+    - Carbs: ${macros.carbs}g
+    - Fats: ${macros.fats}g
+    - Calories: ${macros.calories} kcal
+
+    Meal type context: ${mealContext}.
+    Preferences: ${preferences}
+    ${macroPriority}
+
+    Do NOT suggest any of these dishes: ${excludeList.join(', ')}.
+    ${strict
+      ? 'Only suggest meals where the protein, carbs, fats, and calories are EACH within ±20% of the requested values. If no such dish exists, return an empty array.'
+      : 'Suggest the 3 closest real, plausible meals. For each, show the macro difference.'
+    }
+    The 3 meals must be distinctly different from each other. Prefer less common, creative recipes.
+    Random seed: ${randomSeed}
+
+    IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
+    [{ "meal": "", "description": "", "macros": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "difference": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "ingredients": [{ "name": "", "state": "", "quantity": "", "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }], "instructions": ["Step 1..."] }]`;
+
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: 'user', content: buildPrompt(true) }],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.7,
+    });
+    let suggestions = safeJsonParse(completion.choices[0].message.content);
+
+    if (Array.isArray(suggestions) && suggestions.length === 0) {
+      const fallback = await openai.chat.completions.create({
+        messages: [{ role: 'user', content: buildPrompt(false) }],
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.7,
+      });
+      suggestions = safeJsonParse(fallback.choices[0].message.content);
+    }
+
+    res.json({ suggestions: normalizeSuggestions(suggestions) });
+  } catch (err) {
+    console.error('Error in /api/suggest-meals:', err);
+    res.status(500).json({ error: 'Failed to generate meal suggestions' });
+  }
+});
+
+app.post('/api/fastfood-alternatives', authMiddleware, aiRateLimit, async (req, res) => {
+  try {
+    const { chain, macros, excludeItems = [] } = req.body;
+    const macroError = validateMacros(macros);
+    if (macroError) return res.status(400).json({ error: macroError });
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    const excludeLine = excludeItems.length
+      ? `Do NOT suggest any of these items (already shown): ${excludeItems.join(', ')}.`
+      : '';
+    const prompt = `You are a nutrition and fast food expert. Given the following macro requirements:
+    - Protein: ${macros.protein}g
+    - Carbs: ${macros.carbs}g
+    - Fats: ${macros.fats}g
+    - Calories: ${macros.calories}
+
+    ONLY suggest menu items from ${chain} where ALL macros are within ±10% of the requested values.
+    If no such item exists, return an empty array. Do NOT make up numbers.
+    ${excludeLine}
+    Suggest 3 DIFFERENT menu items. Each time suggest new items, avoid repeating previous results.
+    Random seed: ${randomSeed}
+
+    IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
+    [{ "meal": "", "description": "", "macros": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "difference": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "customization": "" }]`;
+
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.7,
+    });
+    res.json({ suggestions: normalizeSuggestions(safeJsonParse(completion.choices[0].message.content)) });
+  } catch (err) {
+    console.error('Error in /api/fastfood-alternatives:', err);
+    res.status(500).json({ error: 'Failed to generate fast food alternatives' });
+  }
+});
+
+// ─── Favorites routes (protected) ────────────────────────────────────────────
+
+app.post('/api/favorites/save', authMiddleware, async (req, res) => {
+  try {
+    const { meal } = req.body;
+    if (!meal) return res.status(400).json({ error: 'Meal data is required' });
+
+    const favorite = await Favorite.create({
+      userId: req.userId,
+      meal: meal.meal,
+      description: meal.description,
+      macros: meal.macros,
+      ingredients: meal.ingredients || [],
+      instructions: meal.instructions || [],
+      customization: meal.customization,
+    });
+
+    res.status(201).json({ success: true, meal: { ...favorite.toObject(), id: favorite._id } });
+  } catch (err) {
+    console.error('Error saving favorite:', err);
+    res.status(500).json({ error: 'Failed to save favorite meal' });
+  }
+});
+
+app.get('/api/favorites', authMiddleware, async (req, res) => {
+  try {
+    const favorites = await Favorite.find({ userId: req.userId }).sort({ createdAt: -1 });
+    res.json({ favorites: favorites.map(f => ({ ...f.toObject(), id: f._id })) });
+  } catch (err) {
+    console.error('Error retrieving favorites:', err);
+    res.status(500).json({ error: 'Failed to retrieve favorite meals' });
+  }
+});
+
+app.delete('/api/favorites/:id', authMiddleware, async (req, res) => {
+  try {
+    const deleted = await Favorite.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+    if (!deleted) return res.status(404).json({ error: 'Favorite meal not found' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error removing favorite:', err);
+    res.status(500).json({ error: 'Failed to remove favorite meal' });
+  }
+});
+
+app.post('/api/favorites/suggest', authMiddleware, aiRateLimit, async (req, res) => {
+  try {
+    const { macros, preferences } = req.body;
+    if (macros) {
+      const macroError = validateMacros(macros);
+      if (macroError) return res.status(400).json({ error: macroError });
+    }
+    const favoriteMeals = await Favorite.find({ userId: req.userId });
+
+    if (favoriteMeals.length === 0) {
+      return res.json({ suggestions: [], message: 'No favorite meals to base suggestions on' });
+    }
+
+    const favoriteCuisines = [...new Set(favoriteMeals.map(meal => {
+      const text = `${meal.meal} ${meal.description}`.toLowerCase();
+      return CUISINES.find(c => c !== 'Any' && text.includes(c.toLowerCase())) || 'Any';
+    }))];
+    const mostCommonCuisine = favoriteCuisines.filter(c => c !== 'Any')[0] || 'Any';
+
+    const avgProtein = favoriteMeals.reduce((s, m) => s + (m.macros?.protein || 0), 0) / favoriteMeals.length;
+    const avgCarbs = favoriteMeals.reduce((s, m) => s + (m.macros?.carbs || 0), 0) / favoriteMeals.length;
+    const avgFats = favoriteMeals.reduce((s, m) => s + (m.macros?.fats || 0), 0) / favoriteMeals.length;
+
+    let macroPriority = 'Balance all macros similar to your favorites.';
+    if (avgProtein > avgCarbs && avgProtein > avgFats) macroPriority = 'Focus on high protein meals similar to your favorites.';
+    else if (avgCarbs > avgProtein && avgCarbs > avgFats) macroPriority = 'Focus on high carb meals similar to your favorites.';
+    else if (avgFats > avgProtein && avgFats > avgCarbs) macroPriority = 'Focus on high fat meals similar to your favorites.';
+
+    const excludeList = favoriteMeals.map(m => m.meal);
+    const randomSeed = Math.floor(Math.random() * 1000000);
+
+    const prompt = `Based on the user's favorite meals, generate new meal suggestions that match their preferences.
+
+    User's favorite meals: ${favoriteMeals.map(m => m.meal).join(', ')}
+    Preferred cuisine style: ${mostCommonCuisine}
+    Average macro preferences - Protein: ${avgProtein.toFixed(1)}g, Carbs: ${avgCarbs.toFixed(1)}g, Fats: ${avgFats.toFixed(1)}g
+
+    Current macro requirements:
+    - Protein: ${macros.protein}g, Carbs: ${macros.carbs}g, Fats: ${macros.fats}g, Calories: ${macros.calories}
+
+    Preferences: ${preferences}
+    ${macroPriority}
+
+    Do NOT suggest: ${excludeList.join(', ')}.
+    Only suggest meals within ±20% of the requested macros. Suggest 3 NEW meals matching the user's style.
+    Random seed: ${randomSeed}
+
+    IMPORTANT: Respond with ONLY valid JSON array. No markdown or text outside JSON.
+    [{ "meal": "", "description": "", "macros": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "difference": { "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }, "ingredients": [{ "name": "", "state": "", "quantity": "", "protein": 0, "carbs": 0, "fats": 0, "calories": 0 }], "instructions": ["Step 1..."] }]`;
+
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.7,
+    });
+
+    res.json({ suggestions: normalizeSuggestions(safeJsonParse(completion.choices[0].message.content)) });
+  } catch (err) {
+    console.error('Error generating favorite-based suggestions:', err);
+    res.status(500).json({ error: 'Failed to generate favorite-based suggestions' });
+  }
+});
+
+// ─── Meal plan routes (protected) ─────────────────────────────────────────────
+
+app.get('/api/mealplan', authMiddleware, async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: 'Date is required' });
+    const plan = await MealPlan.findOne({ userId: req.userId, date });
+    res.json({ plan: plan || { date, breakfast: null, lunch: null, dinner: null } });
+  } catch (err) {
+    console.error('Error fetching meal plan:', err);
+    res.status(500).json({ error: 'Failed to fetch meal plan' });
+  }
+});
+
+app.post('/api/mealplan', authMiddleware, async (req, res) => {
+  try {
+    const { date, slot, meal } = req.body;
+    if (!date || !slot || !meal) {
+      return res.status(400).json({ error: 'date, slot, and meal are required' });
+    }
+    if (!['breakfast', 'lunch', 'dinner'].includes(slot)) {
+      return res.status(400).json({ error: 'slot must be breakfast, lunch, or dinner' });
+    }
+
+    const plan = await MealPlan.findOneAndUpdate(
+      { userId: req.userId, date },
+      { $set: { [slot]: meal } },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, plan });
+  } catch (err) {
+    console.error('Error saving meal plan:', err);
+    res.status(500).json({ error: 'Failed to save meal plan' });
+  }
+});
+
+app.delete('/api/mealplan/:date/:slot', authMiddleware, async (req, res) => {
+  try {
+    const { date, slot } = req.params;
+    if (!['breakfast', 'lunch', 'dinner'].includes(slot)) {
+      return res.status(400).json({ error: 'slot must be breakfast, lunch, or dinner' });
+    }
+
+    await MealPlan.findOneAndUpdate(
+      { userId: req.userId, date },
+      { $set: { [slot]: null } }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error removing meal from plan:', err);
+    res.status(500).json({ error: 'Failed to remove meal from plan' });
+  }
+});
+
+module.exports = app;

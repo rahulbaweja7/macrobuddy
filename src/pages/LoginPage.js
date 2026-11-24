@@ -18,13 +18,20 @@ const FEATURES = [
   { emoji: '📅', text: 'Day-by-day meal planning with macro totals' },
 ];
 
-export default function LoginPage({ onSwitchToRegister }) {
+export default function LoginPage({ onSwitchToRegister, onBack }) {
   const { login } = useAuth();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [errors, setErrors]     = useState({});
-  const [apiError, setApiError] = useState('');
+  const [apiError, setApiError] = useState(() => {
+    // Server redirects here with ?auth_error=true when Google sign-in fails
+    if (new URLSearchParams(window.location.search).get('auth_error')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      return 'Google sign-in failed. Please try again or use email and password.';
+    }
+    return '';
+  });
   const [loading, setLoading]   = useState(false);
 
   const validate = () => {
@@ -96,6 +103,11 @@ export default function LoginPage({ onSwitchToRegister }) {
       {/* Right form panel */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white dark:bg-[#080810]">
         <div className="w-full max-w-sm">
+          {onBack && (
+            <button type="button" onClick={onBack} className="text-xs font-medium text-gray-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-slate-300 mb-6 transition">
+              ← Back to home
+            </button>
+          )}
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-sm">🥗</div>

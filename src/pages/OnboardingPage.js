@@ -393,7 +393,7 @@ export default function OnboardingPage() {
               onClick={async () => {
                 setSaving(true);
                 try {
-                  const res = await api.patch('/api/user/profile', { goal: null, sex: null, age: null, heightCm: null, weightKg: null, activity: null, macros: {} });
+                  const res = await api.patch('/api/user/profile', { skip: true });
                   updateUser(res.data.user);
                 } catch { setSaving(false); }
               }}

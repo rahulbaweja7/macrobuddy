@@ -59,7 +59,9 @@ function Section({ title, children }) {
 }
 
 export default function ProfilePage({ setPage, setAppMacros }) {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const p = user?.profile ?? {};
 
   const ftIn = p.heightCm ? cmToFtIn(p.heightCm) : { ft: '', inch: '0' };
@@ -119,8 +121,8 @@ export default function ProfilePage({ setPage, setAppMacros }) {
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {
-      setError('Failed to save. Please try again.');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -323,6 +325,51 @@ export default function ProfilePage({ setPage, setAppMacros }) {
             'Save changes'
           )}
         </button>
+
+        {/* Danger zone */}
+        <div className="mt-10 pt-6 border-t border-gray-200 dark:border-white/8">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-red-500 mb-2">Delete account</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">
+            Permanently deletes your account, favorites and meal plans. This can't be undone.
+          </p>
+          {confirmDelete ? (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await api.delete('/api/user');
+                    logout();
+                  } catch (err) {
+                    setError(err.response?.data?.error || 'Failed to delete account.');
+                    setDeleting(false);
+                    setConfirmDelete(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition"
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete everything'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="px-4 py-2 rounded-xl border border-red-300 dark:border-red-500/40 text-red-600 dark:text-red-400 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-500/10 transition"
+            >
+              Delete my account
+            </button>
+          )}
+        </div>
 
       </div>
     </div>

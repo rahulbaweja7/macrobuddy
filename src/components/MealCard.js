@@ -3,10 +3,10 @@ import { FaChevronDown, FaChevronUp, FaBookmark, FaRegBookmark, FaTrash, FaPlus,
 const normalizeInstruction = (input) => {
   const value = String(input ?? '').trim();
   return value
-    .replace(/^(?:step\s*)?\d+\s*(?:[:\-\.]|\))\s*/i, '')
+    .replace(/^(?:step\s*)?\d+\s*(?:[:.-]|\))\s*/i, '')
     .replace(/^\d+\.(?:\s*)/, '')
     .replace(/^\d+\)(?:\s*)/, '')
-    .replace(/^[\u2022\-]\s*/, '')
+    .replace(/^[\u2022-]\s*/, '')
     .trim();
 };
 
