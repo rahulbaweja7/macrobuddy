@@ -33,7 +33,7 @@ const PAGE_TITLES = {
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
-  const [authPage, setAuthPage] = useState('login');
+  const [authPage, setAuthPage] = useState(null); // null = landing | 'login' | 'register'
   const [page, setPage] = useState('landing');
 
   useEffect(() => {
@@ -198,10 +198,10 @@ function AppContent() {
     }
   };
 
-  // Redirect logged-in users away from marketing landing to app
+  // Signing out (or arriving signed out) always returns to the landing page
   useEffect(() => {
-    if (user && page === 'landing') setPage('main');
-  }, [user, page]);
+    if (!user) setAuthPage(null);
+  }, [user]);
 
   // Auto-load favorites when navigating to the favorites page
   useEffect(() => {
@@ -231,9 +231,17 @@ function AppContent() {
   );
 
   if (!user) {
-    return authPage === 'login'
-      ? <LoginPage onSwitchToRegister={() => setAuthPage('register')} />
-      : <RegisterPage onSwitchToLogin={() => setAuthPage('login')} />;
+    if (authPage === 'login') {
+      return <LoginPage onSwitchToRegister={() => setAuthPage('register')} onBack={() => setAuthPage(null)} />;
+    }
+    if (authPage === 'register') {
+      return <RegisterPage onSwitchToLogin={() => setAuthPage('login')} onBack={() => setAuthPage(null)} />;
+    }
+    return (
+      <div className="min-h-screen flex flex-col">
+        <HomePage user={null} onSignIn={() => setAuthPage('login')} onGetStarted={() => setAuthPage('register')} />
+      </div>
+    );
   }
 
   if (!user.onboarded) {
@@ -272,7 +280,7 @@ function AppContent() {
       </header>
 
       <div key={page} className="animate-page-in flex-1 flex flex-col min-h-0">
-      {page === 'landing' && <HomePage setPage={setPage} />}
+      {page === 'landing' && <HomePage user={user} setPage={setPage} />}
       {page === 'main' && (
         <MealSuggestionsPage
           macros={macros}
