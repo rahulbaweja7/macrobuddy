@@ -1,190 +1,188 @@
-import { FaArrowRight } from 'react-icons/fa';
+import { FaMoon, FaSun } from 'react-icons/fa';
+import { useTheme } from '../context/ThemeContext';
+import { FAST_FOOD_CHAINS } from '../data/fastFoodChains';
 
-const FEATURES = [
-  {
-    n: '01',
-    title: 'Meal Suggestions',
-    desc: 'AI-generated recipes matched to your exact macro targets — with ingredients, step-by-step instructions, and a full nutrition breakdown.',
-    cta: 'Get suggestions',
-    key: 'main',
-    accent: 'group-hover:text-indigo-600 dark:group-hover:text-indigo-400',
-  },
-  {
-    n: '02',
-    title: 'Fast Food Finder',
-    desc: 'Browse real menu items from 51 chains — each matched within ±10% of your targets. No cooking required.',
-    cta: 'Find fast food',
-    key: 'fastfood',
-    accent: 'group-hover:text-orange-600 dark:group-hover:text-orange-400',
-  },
-  {
-    n: '03',
-    title: 'Favorites',
-    desc: 'Save meals you love. Generate new suggestions based on your taste profile — no inputs needed.',
-    cta: 'View favorites',
-    key: 'favorites',
-    accent: 'group-hover:text-amber-600 dark:group-hover:text-amber-400',
-  },
-  {
-    n: '04',
-    title: 'Meal Planner',
-    desc: 'Lay out breakfast, lunch, and dinner for any day. See macro totals stack up in real time.',
-    cta: 'Open planner',
-    key: 'mealplan',
-    accent: 'group-hover:text-emerald-600 dark:group-hover:text-emerald-400',
-  },
+const INK = 'text-[#1f1b16] dark:text-[#ece4d4]';
+const MUTED = 'text-[#5f564a] dark:text-[#a79d8c]';
+const RULE = 'border-[#1f1b16]/15 dark:border-[#ece4d4]/15';
+
+// An example, not live data — shows what "close to your numbers" looks like.
+const LABEL_ROWS = [
+  { name: 'Protein', asked: 45, got: 46 },
+  { name: 'Carbs', asked: 60, got: 58 },
+  { name: 'Fat', asked: 20, got: 20 },
 ];
 
-const PLAN_MEALS = [
-  {
-    slot: 'Breakfast',
-    name: 'Greek Yogurt Parfait',
-    p: 28, c: 45, f: 8, cal: 360,
-  },
-  {
-    slot: 'Lunch',
-    name: 'Grilled Chicken Bowl',
-    p: 48, c: 52, f: 14, cal: 530,
-  },
-  {
-    slot: 'Dinner',
-    name: 'Teriyaki Salmon',
-    p: 42, c: 38, f: 14, cal: 450,
-  },
-];
-
-function MacroBar({ pct, color }) {
+function NutritionLabel() {
   return (
-    <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
-      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-    </div>
-  );
-}
+    <div
+      className="w-full max-w-[22rem] bg-[#fffdf6] text-[#1f1b16] border-2 border-[#1f1b16] px-4 pt-3 pb-4 shadow-[6px_6px_0_0_rgba(31,27,22,0.18)] rotate-[1.4deg]"
+      aria-label="Example of a generated meal compared with the requested macros"
+    >
+      <p className="font-display text-[2rem] leading-none font-extrabold tracking-normal">Nutrition Facts</p>
+      <p className="text-[11px] mt-1 text-[#5f564a]">Example · Lemon chicken thighs, rice, charred broccoli</p>
 
-function DailyPlanCard() {
-  const total = PLAN_MEALS.reduce((a, m) => ({ p: a.p + m.p, c: a.c + m.c, f: a.f + m.f, cal: a.cal + m.cal }), { p: 0, c: 0, f: 0, cal: 0 });
-
-  return (
-    <div className="relative w-full max-w-2xl mx-auto">
-      <div className="absolute -inset-px bg-gradient-to-b from-white/10 to-transparent rounded-2xl" />
-      <div className="absolute -inset-6 bg-indigo-500/8 rounded-3xl blur-3xl" />
-      <div className="relative bg-[#0c0c18] rounded-2xl border border-white/8 overflow-hidden shadow-2xl">
-
-        {/* Header row */}
-        <div className="px-5 pt-4 pb-3 border-b border-white/5 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-[9px] font-bold tracking-[0.18em] text-slate-500 uppercase mb-1">Today's plan</p>
-            <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
-              <span className="text-white font-bold">{total.cal}</span> cal
-              <span className="text-slate-600">·</span>
-              <span className="text-violet-300">{total.p}g</span> protein
-              <span className="text-slate-600">·</span>
-              <span className="text-amber-300">{total.c}g</span> carbs
-              <span className="text-slate-600">·</span>
-              <span className="text-emerald-300">{total.f}g</span> fat
-            </div>
-          </div>
-          <div className="flex gap-1 shrink-0 w-24">
-            <MacroBar pct={total.p / 1.5} color="bg-violet-400" />
-            <MacroBar pct={total.c / 2.2} color="bg-amber-400" />
-            <MacroBar pct={total.f / 0.65} color="bg-emerald-400" />
-          </div>
-        </div>
-
-        {/* Meals grid */}
-        <div className="grid grid-cols-3 divide-x divide-white/5">
-          {PLAN_MEALS.map((meal) => (
-            <div key={meal.slot} className="p-4">
-              <p className="text-[8px] font-bold tracking-[0.18em] text-slate-600 uppercase mb-2">{meal.slot}</p>
-              <p className="text-xs font-semibold text-white leading-snug mb-3">{meal.name}</p>
-              <div className="flex flex-col gap-1">
-                {[
-                  { dot: 'bg-violet-400', val: meal.p, label: 'P' },
-                  { dot: 'bg-amber-400', val: meal.c, label: 'C' },
-                  { dot: 'bg-emerald-400', val: meal.f, label: 'F' },
-                  { dot: 'bg-slate-500', val: meal.cal, label: 'cal' },
-                ].map(({ dot, val, label }) => (
-                  <div key={label} className="flex items-center gap-1.5 text-[10px] text-slate-500">
-                    <span className={`w-1 h-1 rounded-full ${dot} shrink-0`} />
-                    <span className="text-slate-300 font-medium tabular-nums">{val}</span>
-                    <span>{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
+      <div className="border-t-[6px] border-[#1f1b16] mt-2 pt-1 flex items-end justify-between">
+        <span className="font-bold text-sm">Calories</span>
+        <span className="font-display text-4xl font-extrabold leading-none">596</span>
       </div>
+      <p className="text-[11px] text-right text-[#5f564a] -mt-0.5">you asked for 600</p>
+
+      <div className="border-t-4 border-[#1f1b16] mt-2">
+        <div className="flex text-[10px] uppercase tracking-wider text-[#5f564a] py-1 border-b border-[#1f1b16]/40">
+          <span className="flex-1" />
+          <span className="w-16 text-right">You asked</span>
+          <span className="w-16 text-right">You got</span>
+        </div>
+        {LABEL_ROWS.map(({ name, asked, got }) => (
+          <div key={name} className="flex items-baseline py-1.5 border-b border-[#1f1b16]/40 text-sm">
+            <span className="flex-1 font-bold">{name}</span>
+            <span className="w-16 text-right tabular-nums text-[#5f564a]">{asked}g</span>
+            <span className="w-16 text-right tabular-nums font-bold">{got}g</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] leading-snug mt-3 text-[#5f564a]">
+        Recipe, ingredient amounts and steps come with it. Within a few grams is the goal; nothing here is lab-tested.
+      </p>
     </div>
   );
 }
 
-export default function HomePage({ setPage }) {
+function LandingNav({ onSignIn, onGetStarted }) {
+  const { dark, toggle } = useTheme();
   return (
-    <div className="flex-1 bg-white dark:bg-[#070711]">
+    <header className="max-w-5xl mx-auto px-5 sm:px-6 py-6 flex items-center justify-between">
+      <span className={`font-display text-xl sm:text-2xl font-extrabold tracking-normal ${INK}`}>MacroBuddy</span>
+      <div className="flex items-center gap-1 sm:gap-3">
+        <button
+          onClick={toggle}
+          aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+          className={`p-2 rounded-md ${MUTED} hover:text-[#c4451c] transition-colors`}
+        >
+          {dark ? <FaSun size={15} /> : <FaMoon size={15} />}
+        </button>
+        <button onClick={onSignIn} className={`px-2 sm:px-3 py-2 text-sm font-medium whitespace-nowrap ${INK} hover:text-[#c4451c] transition-colors`}>
+          Sign in
+        </button>
+        <button
+          onClick={onGetStarted}
+          className="px-3 sm:px-4 py-2 text-sm font-bold whitespace-nowrap rounded-md bg-[#1f1b16] text-[#f6f0e3] dark:bg-[#ece4d4] dark:text-[#17140f] hover:bg-[#c4451c] dark:hover:bg-[#e2683f] dark:hover:text-[#17140f] transition-colors"
+        >
+          <span className="sm:hidden">Sign up</span>
+          <span className="hidden sm:inline">Make an account</span>
+        </button>
+      </div>
+    </header>
+  );
+}
 
-      {/* ── Hero ──────────────────────────────────────────────── */}
-      <section className="relative bg-white dark:bg-[#070711] overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-indigo-500/5 dark:bg-indigo-500/8 rounded-full blur-3xl" />
-        </div>
+const STEPS = [
+  {
+    title: 'Give it your numbers.',
+    body: 'Type in protein, carbs, fat and calories. Or answer a few questions when you sign up and it works out a starting point from your height, weight and activity (the Mifflin-St Jeor formula, same as most calculators).',
+  },
+  {
+    title: 'Say what you feel like.',
+    body: 'Pick breakfast, lunch or dinner, and a cuisine if you care. You get a few options, each with ingredient-level macros and cooking steps.',
+  },
+  {
+    title: 'Or just eat out.',
+    body: `Choose a chain and it picks the menu items that land closest to your numbers. ${FAST_FOOD_CHAINS.length} chains so far.`,
+  },
+  {
+    title: 'Keep what works.',
+    body: 'Save meals you liked. Drop them into a day plan with breakfast, lunch and dinner, and watch the totals add up against your targets.',
+  },
+];
 
-        <div className="relative max-w-5xl mx-auto px-6 pt-20 pb-12 text-center">
-          <h1 className="text-6xl sm:text-7xl lg:text-[5rem] font-black tracking-tight leading-[1] mb-5 text-gray-900 dark:text-white">
-            Know exactly<br />
-            <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-500 dark:from-indigo-400 dark:via-violet-400 dark:to-indigo-300 bg-clip-text text-transparent">
-              what to eat.
-            </span>
+export default function HomePage({ user, setPage, onSignIn, onGetStarted }) {
+  const start = user ? () => setPage('main') : onGetStarted;
+  const shownChains = FAST_FOOD_CHAINS.slice(0, 16);
+
+  return (
+    <div className="font-landing flex-1 bg-[#f6f0e3] dark:bg-[#17140f]">
+      {!user && <LandingNav onSignIn={onSignIn} onGetStarted={onGetStarted} />}
+
+      {/* Hero */}
+      <section className="max-w-5xl mx-auto px-6 pt-10 pb-20 lg:pt-16 grid lg:grid-cols-[1.25fr_1fr] gap-14 items-center">
+        <div>
+          <h1 className={`font-display text-[2.6rem] sm:text-6xl leading-[1.04] font-extrabold tracking-[-0.012em] ${INK}`}>
+            You've got{' '}
+            <span className="whitespace-nowrap underline decoration-[#c4451c] decoration-[5px] underline-offset-[7px]">45g of protein</span>{' '}
+            left. Here's dinner.
           </h1>
-          <p className="text-gray-500 dark:text-slate-400 text-lg leading-relaxed max-w-md mx-auto mb-8">
-            Set your macro targets. Get matched recipes or real fast food — across AI and 51 chains.
+          <p className={`mt-7 text-lg leading-relaxed max-w-xl ${MUTED}`}>
+            MacroBuddy writes recipes that land within a few grams of the numbers you give it, or digs through fast-food menus for the closest match. No spreadsheet, no guessing.
           </p>
-          <div className="flex justify-center gap-3 mb-14">
+          <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
             <button
-              onClick={() => setPage('main')}
-              className="group flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 dark:hover:bg-indigo-500 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+              onClick={start}
+              className="px-6 py-3 text-sm font-bold rounded-md bg-[#c4451c] text-white hover:bg-[#a83a16] transition-colors"
             >
-              Get meal suggestions
-              <FaArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
+              {user ? 'Open meal suggestions' : 'Make an account'}
             </button>
+            {!user && (
+              <button onClick={onSignIn} className={`text-sm font-medium underline underline-offset-4 ${INK} hover:text-[#c4451c]`}>
+                I already have one
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-center lg:justify-end lg:pr-2">
+          <NutritionLabel />
+        </div>
+      </section>
+
+      {/* How it goes */}
+      <section className={`border-t ${RULE}`}>
+        <div className="max-w-5xl mx-auto px-6 py-16 grid md:grid-cols-[1fr_2fr] gap-8 md:gap-14">
+          <h2 className={`font-display text-3xl font-semibold tracking-normal ${INK}`}>How it goes</h2>
+          <div className={`border-t ${RULE}`}>
+            {STEPS.map((s) => (
+              <div key={s.title} className={`py-5 border-b ${RULE}`}>
+                <p className={`font-bold ${INK}`}>{s.title}</p>
+                <p className={`mt-1.5 leading-relaxed ${MUTED}`}>{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Chains */}
+      <section className={`border-t ${RULE}`}>
+        <div className="max-w-5xl mx-auto px-6 py-14 grid md:grid-cols-[1fr_2fr] gap-8 md:gap-14">
+          <h2 className={`font-display text-3xl font-semibold tracking-normal ${INK}`}>On the menu</h2>
+          <p className={`font-display text-xl leading-relaxed ${INK}`}>
+            {shownChains.join(', ')}, and {FAST_FOOD_CHAINS.length - shownChains.length} more.
+          </p>
+        </div>
+      </section>
+
+      {/* Honest note */}
+      <section className={`border-t ${RULE}`}>
+        <div className="max-w-5xl mx-auto px-6 py-14 grid md:grid-cols-[1fr_2fr] gap-8 md:gap-14">
+          <h2 className={`font-display text-3xl font-semibold tracking-normal ${INK}`}>Worth knowing</h2>
+          <div className={`space-y-3 leading-relaxed ${MUTED}`}>
+            <p>
+              Recipes and menu numbers come from an AI model, so treat them as good estimates rather than lab results. If you're counting to the gram, check the label.
+            </p>
+            <p>
+              It plans meals; it doesn't keep a food diary. Logging what you actually ate isn't built yet.
+            </p>
             <button
-              onClick={() => setPage('fastfood')}
-              className="px-6 py-3 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-slate-300 font-semibold text-sm rounded-xl transition-all border border-gray-200 dark:border-white/10"
+              onClick={start}
+              className={`mt-3 text-sm font-bold underline underline-offset-4 decoration-2 decoration-[#c4451c] ${INK} hover:text-[#c4451c]`}
             >
-              Find fast food
+              {user ? 'Open meal suggestions' : 'Fine by me, make an account'}
             </button>
           </div>
-
-          <DailyPlanCard />
         </div>
       </section>
 
-      {/* ── Features ──────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-6 py-16">
-        <p className="text-[10px] font-bold tracking-[0.2em] text-gray-400 dark:text-slate-600 uppercase mb-2">What's inside</p>
-        <div className="mt-6 border-t border-gray-100 dark:border-white/5">
-          {FEATURES.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setPage(f.key)}
-              className="group w-full flex items-center justify-between gap-6 py-6 border-b border-gray-100 dark:border-white/5 text-left transition-colors hover:bg-gray-50/50 dark:hover:bg-white/[0.02] -mx-4 px-4 rounded-xl"
-            >
-              <div className="flex items-start gap-6">
-                <span className="text-xs font-bold text-gray-300 dark:text-slate-700 mt-0.5 tabular-nums shrink-0">{f.n}</span>
-                <div>
-                  <h3 className={`text-base font-bold text-gray-900 dark:text-white transition-colors ${f.accent}`}>{f.title}</h3>
-                  <p className="text-sm text-gray-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">{f.desc}</p>
-                </div>
-              </div>
-              <span className={`text-sm font-semibold flex items-center gap-1.5 shrink-0 text-gray-400 dark:text-slate-600 transition-all group-hover:translate-x-0.5 ${f.accent}`}>
-                {f.cta} <FaArrowRight size={10} />
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
+      <footer className={`border-t ${RULE}`}>
+        <div className={`max-w-5xl mx-auto px-6 py-6 text-xs ${MUTED}`}>© {new Date().getFullYear()} MacroBuddy</div>
+      </footer>
     </div>
   );
 }
