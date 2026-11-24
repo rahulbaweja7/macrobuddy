@@ -107,13 +107,13 @@ export default function HomePage({ user, setPage, onSignIn, onGetStarted }) {
       {/* Hero */}
       <section className="max-w-5xl mx-auto px-6 pt-10 pb-20 lg:pt-16 grid lg:grid-cols-[1.25fr_1fr] gap-14 items-center">
         <div>
+          <p className={`text-sm font-bold uppercase tracking-[0.14em] text-[#c4451c] mb-5`}>A meal planner for people counting macros</p>
           <h1 className={`font-display text-[2.6rem] sm:text-6xl leading-[1.04] font-extrabold tracking-[-0.012em] ${INK}`}>
-            You've got{' '}
-            <span className="whitespace-nowrap underline decoration-[#c4451c] decoration-[5px] underline-offset-[7px]">45g of protein</span>{' '}
-            left. Here's dinner.
+            Meals that{' '}
+            <span className="whitespace-nowrap underline decoration-[#c4451c] decoration-[5px] underline-offset-[7px]">match your macros.</span>
           </h1>
           <p className={`mt-7 text-lg leading-relaxed max-w-xl ${MUTED}`}>
-            MacroBuddy writes recipes that land within a few grams of the numbers you give it, or digs through fast-food menus for the closest match. No spreadsheet, no guessing.
+            Enter your daily protein, carb, fat and calorie targets. MacroBuddy suggests recipes and fast-food orders that fit them, lets you save the ones you like, and helps you plan a full day of eating.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
             <button
